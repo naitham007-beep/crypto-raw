@@ -66,3 +66,6 @@ xz -dc raw/2026/09/10/1405Z/okx_optsum_btc.json.xz | python3 -m json.tool | head
 (รันจากเครื่องในไทยไม่เจอ = ปัญหานี้โผล่เฉพาะบน cloud)
 แก้โดยให้แต่ละ endpoint มี **URL สำรองเรียงลำดับ** → ใช้ `data-api.binance.vision` (ตัวสะท้อนข้อมูลตลาดของ Binance เอง) เป็นทางหลัก
 และเพิ่มราคาจาก OKX (`market/ticker`) เป็นตัวยืนพื้นที่ไม่เคยโดนบล็อกตามภูมิภาค
+
+## 🌐 หน้าเว็บ
+https://korntrade.github.io/crypto-raw/ — เข็มทิศออปชัน (อ่านจาก `web/latest.json` ในคลังนี้)

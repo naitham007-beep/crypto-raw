@@ -24,7 +24,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 OUT_DIR = Path(os.environ.get("OUT_DIR", "out"))
-REPO = os.environ.get("GITHUB_REPOSITORY", "naitham007-beep/crypto-raw")
+REPO = os.environ.get("GITHUB_REPOSITORY", "korntrade/crypto-raw")
 HISTORY_KEEP_DAYS = 120
 UA = "crypto-raw-compute/1.0"
 
