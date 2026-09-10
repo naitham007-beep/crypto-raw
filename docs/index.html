@@ -135,8 +135,31 @@ const REPO = (() => {
   return "korntrade/crypto-raw";
 })();
 // ?data=ไฟล์.json ใช้ทดสอบหน้าเว็บกับข้อมูลจำลองในเครื่อง ก่อนตัวคำนวณบน cloud จะรันจริง
-const DATA_URL = new URLSearchParams(location.search).get("data")
-  || "https://raw.githubusercontent.com/" + REPO + "/main/web/latest.json";
+const DATA_OVERRIDE = new URLSearchParams(location.search).get("data");
+// ดึงผ่าน GitHub API ก่อน — raw.githubusercontent แคชแยกตามจุด CDN (เจอ 11 ก.ย.: บางจุดยังส่งข้อมูลเก่า 2 ชม. หลังอัพเดทไปแล้ว)
+// API ไม่มีแคชแต่จำกัด 60 ครั้ง/ชม./IP → โดนจำกัดเมื่อไหร่ค่อยถอยไปใช้ raw
+const API_URL = "https://api.github.com/repos/" + REPO + "/contents/web/latest.json?ref=main";
+const RAW_URL = "https://raw.githubusercontent.com/" + REPO + "/main/web/latest.json";
+
+async function fetchData() {
+  const bust = u => u + (u.includes("?") ? "&" : "?") + "t=" + Date.now();
+  if (DATA_OVERRIDE) {
+    const r = await fetch(bust(DATA_OVERRIDE), {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+  try {
+    const r = await fetch(API_URL, {cache: "no-store"});
+    if (r.ok) {
+      const c = await r.json();
+      const bytes = Uint8Array.from(atob((c.content || "").replace(/\n/g, "")), ch => ch.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes));
+    }
+  } catch (e) { /* ตกไปใช้ raw */ }
+  const r = await fetch(bust(RAW_URL), {cache: "no-store"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
 const STALE_HOURS = 3;
 const EV = {
   proven: ["✅ พิสูจน์แล้ว", "b-proven"],
@@ -154,9 +177,7 @@ try { CUR = localStorage.getItem("coin") || "BTC"; } catch (e) {}
 
 async function load() {
   try {
-    const r = await fetch(DATA_URL + (DATA_URL.includes("?") ? "&" : "?") + "t=" + Date.now(), {cache: "no-store"});
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    DATA = await r.json();
+    DATA = await fetchData();
     // กำลังพิมพ์ราคาอยู่ → ไม่วาดหน้าใหม่ทับ (ช่องกรอกจะหลุดโฟกัส) · รอบถัดไปค่อยวาด
     if (!DATA_LOADED_ONCE || document.activeElement?.id !== "px") render();
     DATA_LOADED_ONCE = true;
