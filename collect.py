@@ -26,11 +26,18 @@ RETRIES = 3           # ยิงซ้ำสูงสุดกี่ครั�
 BACKOFF = 4           # วินาที รอก่อนยิงซ้ำ (คูณตามรอบ)
 UA = "crypto-raw-collector/1.0 (personal market data archive)"
 
-# (ชื่อไฟล์, url, ชนิดการตรวจ)  — ยิงทดสอบจริงครบทุกตัวแล้ว 10 ก.ย. 2026 ไม่ต้องใช้ API key
+# (ชื่อไฟล์, [url หลัก, url สำรอง...], ชนิดการตรวจ)  — ยิงทดสอบจริงครบทุกตัวแล้ว 10 ก.ย. 2026 ไม่ต้องใช้ API key
+# ⚠️ api.binance.com ตอบ HTTP 451 เมื่อยิงจาก IP อเมริกา (runner ของ GitHub อยู่ US)
+#    จึงใส่ data-api.binance.vision (ตัวสะท้อนข้อมูลตลาดของ Binance เอง) เป็นทางสำรอง
 ENDPOINTS = [
     # ราคา (อ้างอิงเวลาของ snapshot — klines ย้อนหลังได้ ไม่ต้องเก็บ)
-    ("binance_ticker24h_btc", "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", "binance"),
-    ("binance_ticker24h_eth", "https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT", "binance"),
+    ("binance_ticker24h_btc", ["https://data-api.binance.vision/api/v3/ticker/24hr?symbol=BTCUSDT",
+                               "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"], "binance"),
+    ("binance_ticker24h_eth", ["https://data-api.binance.vision/api/v3/ticker/24hr?symbol=ETHUSDT",
+                               "https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT"], "binance"),
+    # ราคาจาก OKX — ตัวยืนพื้น ไม่เคยโดนบล็อกตามภูมิภาค
+    ("okx_ticker_swap_btc", "https://www.okx.com/api/v5/market/ticker?instId=BTC-USDT-SWAP", "okx"),
+    ("okx_ticker_swap_eth", "https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT-SWAP", "okx"),
     ("okx_index_btc", "https://www.okx.com/api/v5/market/index-tickers?instId=BTC-USD", "okx"),
     ("okx_index_eth", "https://www.okx.com/api/v5/market/index-tickers?instId=ETH-USD", "okx"),
     # funding (รอบปัจจุบัน + ย้อนหลัง เผื่อรอบที่ตัวเก็บพลาด)
@@ -52,8 +59,8 @@ ENDPOINTS = [
 ]
 
 
-def fetch(url):
-    """ยิง 1 request พร้อม retry — คืน (bytes, http_status) หรือโยน exception ถ้าหมดโควตา"""
+def fetch_one(url):
+    """ยิง url เดียวพร้อม retry — คืน (bytes, http_status) หรือโยน exception ถ้าหมดโควตา"""
     last = None
     for attempt in range(1, RETRIES + 1):
         try:
@@ -62,13 +69,29 @@ def fetch(url):
                 return r.read(), r.status
         except urllib.error.HTTPError as e:
             last = e
-            # 4xx ที่ไม่ใช่ rate-limit ยิงซ้ำก็ไม่ช่วย
+            # 4xx ที่ไม่ใช่ rate-limit ยิงซ้ำก็ไม่ช่วย (451 = โดนบล็อกตามภูมิภาค)
             if e.code not in (408, 429) and 400 <= e.code < 500:
                 raise
         except Exception as e:  # timeout / DNS / connection reset
             last = e
         if attempt < RETRIES:
             time.sleep(BACKOFF * attempt)
+    raise last
+
+
+def fetch(urls):
+    """ไล่ยิงตามลำดับ url จนกว่าจะได้ — คืน (bytes, http_status, url ที่ใช้จริง)"""
+    if isinstance(urls, str):
+        urls = [urls]
+    last = None
+    for i, url in enumerate(urls):
+        try:
+            body, status = fetch_one(url)
+            return body, status, url
+        except Exception as e:
+            last = e
+            if i + 1 < len(urls):
+                print("    ทางหลักล้ม (%s) -> ลองทางสำรอง" % e, flush=True)
     raise last
 
 
@@ -111,9 +134,10 @@ def main():
     n_ok = 0
     for name, url, kind in ENDPOINTS:
         t0 = time.time()
-        rec = {"name": name, "url": url, "source": kind}
+        rec = {"name": name, "url": url if isinstance(url, str) else url[0], "source": kind}
         try:
-            body, status = fetch(url)
+            body, status, used = fetch(url)
+            rec["url_used"] = used
             ok, why, rows = check_payload(body, kind)
             # เซฟทั้งกรณีดีและกรณีเสีย — ของเสียก็เป็นหลักฐานว่าวันนั้นเกิดอะไรขึ้น
             fname = "%s.json.xz" % name if ok else "%s.BAD.json.xz" % name
