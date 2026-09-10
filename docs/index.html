@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เข็มทิศออปชัน BTC · ETH</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f1; --card:#ffffff; --ink:#1c1b19; --mute:#6b6862; --line:#e4e1da;
+  --green:#1f7a4d; --green-bg:#e6f3ec; --amber:#9a6200; --amber-bg:#fbf1dc;
+  --gray:#6b6862; --gray-bg:#efede8; --red:#b3261e; --red-bg:#fbe9e7; --accent:#2a4bd7;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#14140f; --card:#1d1d18; --ink:#ecebe6; --mute:#a3a097; --line:#33322b;
+    --green:#5fcf94; --green-bg:#16301f; --amber:#f0b64d; --amber-bg:#352910;
+    --gray:#a3a097; --gray-bg:#26261f; --red:#ff8a80; --red-bg:#3a1b18; --accent:#8ea4ff; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.6 "IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:16px 14px 60px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+h1{font-size:20px;margin:4px 0}
+.stamp{color:var(--mute);font-size:13px}
+.tabs{display:flex;gap:6px;margin:14px 0}
+.tab{flex:1;padding:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+.tab[aria-selected=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.tab small{display:block;font-weight:400;color:var(--mute);font-size:12px}
+.stale{background:var(--red-bg);color:var(--red);border-radius:10px;padding:10px 12px;margin:10px 0;font-weight:600}
+section{margin-top:22px}
+h2{font-size:13px;letter-spacing:.04em;color:var(--mute);margin:0 0 8px;font-weight:600}
+.mode{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.mode .big{font-size:24px;font-weight:700;display:flex;gap:10px;align-items:center}
+.mode .why{color:var(--mute);margin:4px 0 12px}
+.mode .do{border-left:4px solid var(--ink);padding:8px 12px;background:var(--gray-bg);border-radius:0 8px 8px 0;font-weight:500}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:12px}
+.kv div{background:var(--bg);border-radius:8px;padding:8px 10px}
+.kv b{display:block;font-size:17px}
+.kv span{font-size:12px;color:var(--mute)}
+.check{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.check .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.check .t{font-weight:600}
+.check .fact{font-variant-numeric:tabular-nums;margin:4px 0}
+.check .means{margin:6px 0 0}
+.check .note{font-size:12.5px;color:var(--mute);margin-top:6px}
+.badge{flex:none;font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.b-proven{background:var(--green-bg);color:var(--green)}
+.b-weak{background:var(--amber-bg);color:var(--amber)}
+.b-none{background:var(--gray-bg);color:var(--gray)}
+.check.proven{border-left:4px solid var(--green)}
+.legend{font-size:12.5px;color:var(--mute);display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.tbl{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:14px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{color:var(--mute);font-weight:600;font-size:12.5px}
+tr:last-child td{border-bottom:0}
+.up{color:var(--green)} .dn{color:var(--red)}
+.sum{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.sum ul{margin:6px 0 0;padding-left:20px}
+.sum li{margin:4px 0}
+footer{margin-top:28px;font-size:12.5px;color:var(--mute)}
+footer a{color:var(--accent)}
+.err{background:var(--red-bg);color:var(--red);padding:14px;border-radius:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧭 เข็มทิศออปชัน</h1>
+    <div class="stamp" id="stamp">กำลังโหลด…</div>
+  </header>
+  <div id="stale" class="stale" hidden></div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <main id="main"></main>
+  <footer>
+    อัพเดทอัตโนมัติทุก 2 ชม. จากข้อมูลสาธารณะของ OKX · Binance · Deribit ·
+    <a href="https://github.com/naitham007-beep/crypto-raw">คลังข้อมูลดิบ</a><br>
+    หน้านี้บอกสภาพตลาดและระดับหลักฐานของแต่ละข้อ — ไม่ใช่คำแนะนำการลงทุน การตัดสินใจเข้า/ออกเป็นของผู้ใช้เอง
+  </footer>
+</div>
+
+<script>
+const DATA_URL = "https://raw.githubusercontent.com/naitham007-beep/crypto-raw/main/web/latest.json";
+const STALE_HOURS = 3;
+const EV = {
+  proven: ["✅ พิสูจน์แล้ว", "b-proven"],
+  weak:   ["🟡 ใช้ประกอบ", "b-weak"],
+  none:   ["⬜ ยังไม่มีสถิติ", "b-none"],
+};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = (v, d = 0) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("th-TH", {maximumFractionDigits: d, minimumFractionDigits: d});
+const thTime = iso => new Date(iso).toLocaleString("th-TH", {timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+
+let DATA = null, CUR = "BTC";
+try { CUR = localStorage.getItem("coin") || "BTC"; } catch (e) {}
+
+async function load() {
+  try {
+    const r = await fetch(DATA_URL + "?t=" + Date.now(), {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    DATA = await r.json();
+    render();
+  } catch (e) {
+    $("#main").innerHTML = `<div class="err">โหลดข้อมูลไม่ได้ (${esc(e.message)}) — ลองรีเฟรชอีกครั้ง</div>`;
+    $("#stamp").textContent = "";
+  }
+}
+
+function render() {
+  const gen = new Date(DATA.generated_at_utc);
+  const ageH = (Date.now() - gen) / 36e5;
+  $("#stamp").textContent = "ข้อมูล ณ " + thTime(DATA.generated_at_utc) + " น.";
+  const st = $("#stale");
+  st.hidden = ageH < STALE_HOURS;
+  st.textContent = `⚠️ ข้อมูลเก่า ${fmt(ageH, 1)} ชม. — ตัวเก็บอาจสะดุด อย่าใช้ตัดสินใจจนกว่าจะอัพเดท`;
+
+  const syms = Object.keys(DATA.symbols);
+  if (!syms.includes(CUR)) CUR = syms[0];
+  $("#tabs").innerHTML = syms.map(s => {
+    const d = DATA.symbols[s];
+    const ch = d.change_24h;
+    return `<button class="tab" role="tab" aria-selected="${s === CUR}" data-s="${s}">
+      ${s} ${fmt(d.spot, s === "BTC" ? 0 : 1)}
+      <small>${d.mode.icon} ${esc(d.mode.mode)} · <span class="${ch >= 0 ? "up" : "dn"}">${ch >= 0 ? "+" : ""}${fmt(ch, 2)}% 24ชม.</span></small>
+    </button>`;
+  }).join("");
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+    CUR = b.dataset.s;
+    try { localStorage.setItem("coin", CUR); } catch (e) {}
+    render();
+  });
+
+  const d = DATA.symbols[CUR];
+  const o = d.options || {};
+  const dp = CUR === "BTC" ? 0 : 1;
+  $("#main").innerHTML = `
+    <section>
+      <h2>① ตอนนี้ตลาดอยู่โหมดไหน</h2>
+      <div class="mode">
+        <div class="big">${d.mode.icon} ${esc(d.mode.mode)}</div>
+        <div class="why">${esc(d.mode.why)}</div>
+        <div class="do">▶ ${esc(d.mode.do)}</div>
+        <div class="kv">
+          <div><span>max pain</span><b>${fmt(o.max_pain, dp)}</b></div>
+          <div><span>โซนตรึง</span><b>${o.pin_zone ? fmt(o.pin_zone[0], dp) + "–" + fmt(o.pin_zone[1], dp) : "—"}</b></div>
+          <div><span>กำแพง put / call</span><b>${fmt(o.put_wall, dp)} / ${fmt(o.call_wall, dp)}</b></div>
+          <div><span>หมดอายุ ${esc(o.expiry || "")}</span><b>อีก ${fmt(o.hours_left, 1)} ชม.</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>② เช็กลิสต์ก่อนตัดสินใจ</h2>
+      <div class="legend"><span>✅ พิสูจน์แล้วด้วยข้อมูลย้อนหลัง</span><span>🟡 ใช้ประกอบ ห้ามใช้เดี่ยว</span><span>⬜ ข้อเท็จจริงเท่านั้น ยังไม่มีสถิติ</span></div>
+      ${d.checks.map(c => `
+        <div class="check ${c.evidence}">
+          <div class="top"><div class="t">${esc(c.title)}</div><span class="badge ${EV[c.evidence][1]}">${EV[c.evidence][0]}</span></div>
+          <div class="fact">${esc(c.fact)}</div>
+          <div class="means">→ ${esc(c.means)}</div>
+          <div class="note">${esc(c.evidence_note)}</div>
+        </div>`).join("")}
+    </section>
+
+    <section>
+      <h2>③ อะไรเปลี่ยนไปบ้าง</h2>
+      ${timeline(d)}
+    </section>
+
+    <section>
+      <h2>④ สรุป — ข้อที่กล้าเอาไปใช้จริง</h2>
+      ${summary(d)}
+    </section>`;
+}
+
+function timeline(d) {
+  const tl = DATA.timeline || {};
+  const cols = [["ตอนนี้", {spot: d.spot, funding: d.funding, options: d.options, vol: d.vol}]]
+    .concat(["2h", "8h", "24h"].filter(k => tl[k] && tl[k].symbols && tl[k].symbols[CUR])
+      .map(k => [k.replace("h", " ชม.ก่อน"), tl[k].symbols[CUR]]));
+  if (cols.length < 2) {
+    return `<div class="sum">ยังไม่มีข้อมูลย้อนหลังให้เทียบ — ตัวเก็บเพิ่งเริ่มทำงาน รอบถัดไป (อีก ~2 ชม.) จะเริ่มเห็นการเปลี่ยนแปลง</div>`;
+  }
+  const dp = CUR === "BTC" ? 0 : 1;
+  const rows = [
+    ["ราคา", x => fmt(x.spot, dp), x => x.spot],
+    ["funding (เปอร์เซ็นไทล์)", x => x.funding ? fmt(x.funding.percentile, 0) : "—", x => x.funding && x.funding.percentile],
+    ["สถานะค้าง (ล้าน $)", x => x.funding && x.funding.oi_usd ? fmt(x.funding.oi_usd / 1e6, 0) : "—", x => x.funding && x.funding.oi_usd],
+    ["max pain", x => x.options ? fmt(x.options.max_pain, dp) : "—", x => x.options && x.options.max_pain],
+    ["IV ที่ราคาปัจจุบัน %", x => x.options ? fmt(x.options.atm_iv, 1) : "—", x => x.options && x.options.atm_iv],
+  ];
+  const now = cols[0][1];
+  return `<div class="tbl"><table>
+    <thead><tr><th></th>${cols.map(c => `<th>${c[0]}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(([label, show, raw]) => `<tr><td>${label}</td>${cols.map((c, i) => {
+      if (i === 0) return `<td><b>${show(c[1])}</b></td>`;
+      const a = raw(now), b = raw(c[1]);
+      const arrow = a != null && b != null && a !== b ? (a > b ? ' <span class="up">▲</span>' : ' <span class="dn">▼</span>') : "";
+      return `<td>${show(c[1])}${arrow}</td>`;
+    }).join("")}</tr>`).join("")}</tbody>
+  </table></div>
+  <div class="legend" style="margin-top:6px">▲▼ = ตอนนี้สูง/ต่ำกว่าช่วงนั้น</div>`;
+}
+
+function summary(d) {
+  const proven = d.checks.filter(c => c.evidence === "proven");
+  const weak = d.checks.filter(c => c.evidence === "weak").length;
+  const none = d.checks.filter(c => c.evidence === "none").length;
+  const list = proven.length
+    ? `<ul>${proven.map(c => `<li><b>${esc(c.title)}:</b> ${esc(c.means)}</li>`).join("")}</ul>`
+    : `<p>ตอนนี้ยังไม่มีข้อไหนที่มีหลักฐานพอให้ใช้ตัดสินใจเดี่ยวๆ</p>`;
+  return `<div class="sum">
+    <div>ข้อที่มีหลักฐานรองรับ <b>${proven.length}</b> ข้อ · ใช้ประกอบ <b>${weak}</b> ข้อ · ข้อเท็จจริงล้วน <b>${none}</b> ข้อ</div>
+    ${list}
+    <div class="note" style="margin-top:8px;color:var(--mute);font-size:12.5px">ข้อ 🟡 และ ⬜ ให้ใช้เป็นบริบท ไม่ใช่เหตุผลในการกดเข้า · สถิติจะแน่นขึ้นเรื่อยๆ เมื่อคลังสะสมข้อมูลมากขึ้น</div>
+  </div>`;
+}
+
+load();
+setInterval(load, 10 * 60 * 1000);
+</script>
+</body>
+</html>

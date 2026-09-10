@@ -40,11 +40,11 @@ ENDPOINTS = [
     ("okx_ticker_swap_eth", "https://www.okx.com/api/v5/market/ticker?instId=ETH-USDT-SWAP", "okx"),
     ("okx_index_btc", "https://www.okx.com/api/v5/market/index-tickers?instId=BTC-USD", "okx"),
     ("okx_index_eth", "https://www.okx.com/api/v5/market/index-tickers?instId=ETH-USD", "okx"),
-    # funding (รอบปัจจุบัน + ย้อนหลัง เผื่อรอบที่ตัวเก็บพลาด)
+    # funding (รอบปัจจุบัน + ย้อนหลัง 100 รอบ ≈ 33 วัน — ใช้คิดเปอร์เซ็นไทล์ให้ตรงกับวิธี backtest)
     ("okx_funding_btc", "https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP", "okx"),
     ("okx_funding_eth", "https://www.okx.com/api/v5/public/funding-rate?instId=ETH-USDT-SWAP", "okx"),
-    ("okx_funding_hist_btc", "https://www.okx.com/api/v5/public/funding-rate-history?instId=BTC-USDT-SWAP&limit=20", "okx"),
-    ("okx_funding_hist_eth", "https://www.okx.com/api/v5/public/funding-rate-history?instId=ETH-USDT-SWAP&limit=20", "okx"),
+    ("okx_funding_hist_btc", "https://www.okx.com/api/v5/public/funding-rate-history?instId=BTC-USDT-SWAP&limit=100", "okx"),
+    ("okx_funding_hist_eth", "https://www.okx.com/api/v5/public/funding-rate-history?instId=ETH-USDT-SWAP&limit=100", "okx"),
     # open interest ฝั่ง perp
     ("okx_oi_swap_btc", "https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP", "okx"),
     ("okx_oi_swap_eth", "https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=ETH-USDT-SWAP", "okx"),

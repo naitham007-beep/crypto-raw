@@ -7,6 +7,13 @@ on:
   schedule:
     - cron: "5 */2 * * *"
   workflow_dispatch:        # ปุ่มยิงเองสำหรับทดสอบ
+  push:                     # แก้โค้ดแล้วรันทดสอบเองทันที (commit ข้อมูลจากตัวเก็บเองไม่วนกลับมาปลุก)
+    branches: [main]
+    paths:
+      - collect.py
+      - compute.py
+      - push_github.py
+      - .github/workflows/collect.yml
 
 permissions:
   contents: write
@@ -26,6 +33,7 @@ jobs:
           fetch-depth: 1
           sparse-checkout: |
             collect.py
+            compute.py
             push_github.py
           sparse-checkout-cone-mode: false
 
@@ -33,6 +41,14 @@ jobs:
         env:
           OUT_DIR: ${{ runner.temp }}/out
         run: python3 collect.py
+
+      # คำนวณพังต้องไม่ทำให้ข้อมูลดิบหาย — ดิบคือของที่ย้อนกลับมาเก็บไม่ได้
+      - name: คำนวณหน้าสรุป
+        continue-on-error: true
+        env:
+          OUT_DIR: ${{ runner.temp }}/out
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 compute.py
 
       - name: ส่งเข้า repo
         env:
