@@ -11,11 +11,13 @@
   --bg:#f6f5f1; --card:#ffffff; --ink:#1c1b19; --mute:#6b6862; --line:#e4e1da;
   --green:#1f7a4d; --green-bg:#e6f3ec; --amber:#9a6200; --amber-bg:#fbf1dc;
   --gray:#6b6862; --gray-bg:#efede8; --red:#b3261e; --red-bg:#fbe9e7; --accent:#2a4bd7;
+  --violet:#6b3fb8; --violet-bg:#f1ebfb; --blue:#1d5fb8; --teal:#1f6f78;
 }
 @media (prefers-color-scheme: dark){
   :root{ --bg:#14140f; --card:#1d1d18; --ink:#ecebe6; --mute:#a3a097; --line:#33322b;
     --green:#5fcf94; --green-bg:#16301f; --amber:#f0b64d; --amber-bg:#352910;
-    --gray:#a3a097; --gray-bg:#26261f; --red:#ff8a80; --red-bg:#3a1b18; --accent:#8ea4ff; }
+    --gray:#a3a097; --gray-bg:#26261f; --red:#ff8a80; --red-bg:#3a1b18; --accent:#8ea4ff;
+    --violet:#c7a6ff; --violet-bg:#2a2140; --blue:#8ab8ff; --teal:#6fd0d8; }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -65,6 +67,48 @@ tr:last-child td{border-bottom:0}
 footer{margin-top:28px;font-size:12.5px;color:var(--mute)}
 footer a{color:var(--accent)}
 .err{background:var(--red-bg);color:var(--red);padding:14px;border-radius:12px}
+.note{font-size:12.5px;color:var(--mute);margin-top:6px}
+.ls{font-size:12px;color:var(--mute)}
+/* ⓪ bias + แผนที่ราคา */
+.bias{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--gray);border-radius:14px;padding:14px 16px}
+.bias.b-up{border-left-color:var(--green)} .bias.b-dn{border-left-color:var(--red)}
+.bias .big{font-size:22px;font-weight:700}
+.bias .big small{font-size:13px;color:var(--mute);font-weight:500}
+.bias .why{margin:6px 0 0}
+.ctxh{margin:14px 0 4px;font-weight:600;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctx{display:flex;gap:10px;padding:7px 0;border-top:1px dashed var(--line)}
+.arr{flex:none;width:20px;text-align:center;font-weight:700}
+.arr.up{color:var(--green)} .arr.down{color:var(--red)} .arr.flat{color:var(--mute)}
+.pricebox{margin:16px 0 10px}
+.pricebox label{font-size:13px;color:var(--mute)}
+.pxrow{display:flex;gap:8px;margin-top:4px}
+.pxrow input{flex:1;min-width:0;font:inherit;font-size:20px;font-weight:700;padding:9px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--card);color:var(--ink);font-variant-numeric:tabular-nums}
+.pxrow button{font:inherit;font-size:13px;padding:0 12px;border:1px solid var(--line);border-radius:10px;
+  background:var(--card);color:var(--mute);cursor:pointer;white-space:nowrap}
+.where{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.where .wt{font-weight:700;font-size:16px}
+.where.in{background:var(--violet-bg);border-color:var(--violet)}
+.where .more{margin-top:6px;font-size:13.5px}
+.zones{display:grid;gap:8px;margin-bottom:10px}
+.zone{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--gray);border-radius:12px;padding:9px 14px}
+.zone.res{border-left-color:var(--red)} .zone.sup{border-left-color:var(--green)} .zone.in{border-left-color:var(--violet)}
+.zone .zt{display:flex;justify-content:space-between;gap:8px;font-weight:600;font-variant-numeric:tabular-nums}
+.ladder{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.lv{display:grid;grid-template-columns:84px 1fr auto;gap:10px;align-items:center;padding:8px 12px;
+  border-bottom:1px solid var(--line);border-left:4px solid var(--line)}
+.lv:last-child{border-bottom:0}
+.lv b{font-variant-numeric:tabular-nums;font-size:16px}
+.lv .lt{font-weight:600;font-size:14px;line-height:1.35}
+.lv > span{font-variant-numeric:tabular-nums;font-size:13px}
+.lv.now{background:var(--gray-bg);border-left-color:var(--ink)}
+.lv.c-red{border-left-color:var(--red)} .lv.c-red b{color:var(--red)}
+.lv.c-green{border-left-color:var(--green)} .lv.c-green b{color:var(--green)}
+.lv.c-amber{border-left-color:var(--amber)} .lv.c-amber b{color:var(--amber)}
+.lv.c-violet{border-left-color:var(--violet)} .lv.c-violet b{color:var(--violet)}
+.lv.c-blue{border-left-color:var(--blue)} .lv.c-blue b{color:var(--blue)}
+.lv.c-teal{border-left-color:var(--teal)} .lv.c-teal b{color:var(--teal)}
+.lv.c-gray b{color:var(--mute)}
 </style>
 </head>
 <body>
@@ -90,7 +134,9 @@ const REPO = (() => {
   if (h.endsWith(".github.io") && seg) return h.split(".")[0] + "/" + seg;
   return "korntrade/crypto-raw";
 })();
-const DATA_URL = "https://raw.githubusercontent.com/" + REPO + "/main/web/latest.json";
+// ?data=ไฟล์.json ใช้ทดสอบหน้าเว็บกับข้อมูลจำลองในเครื่อง ก่อนตัวคำนวณบน cloud จะรันจริง
+const DATA_URL = new URLSearchParams(location.search).get("data")
+  || "https://raw.githubusercontent.com/" + REPO + "/main/web/latest.json";
 const STALE_HOURS = 3;
 const EV = {
   proven: ["✅ พิสูจน์แล้ว", "b-proven"],
@@ -102,15 +148,18 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const fmt = (v, d = 0) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("th-TH", {maximumFractionDigits: d, minimumFractionDigits: d});
 const thTime = iso => new Date(iso).toLocaleString("th-TH", {timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
 
-let DATA = null, CUR = "BTC";
+let DATA = null, CUR = "BTC", DATA_LOADED_ONCE = false;
+const PX = {};   // ราคาที่ผู้ใช้กรอกเอง แยกรายเหรียญ (ไม่มี = ใช้ราคาล่าสุด)
 try { CUR = localStorage.getItem("coin") || "BTC"; } catch (e) {}
 
 async function load() {
   try {
-    const r = await fetch(DATA_URL + "?t=" + Date.now(), {cache: "no-store"});
+    const r = await fetch(DATA_URL + (DATA_URL.includes("?") ? "&" : "?") + "t=" + Date.now(), {cache: "no-store"});
     if (!r.ok) throw new Error("HTTP " + r.status);
     DATA = await r.json();
-    render();
+    // กำลังพิมพ์ราคาอยู่ → ไม่วาดหน้าใหม่ทับ (ช่องกรอกจะหลุดโฟกัส) · รอบถัดไปค่อยวาด
+    if (!DATA_LOADED_ONCE || document.activeElement?.id !== "px") render();
+    DATA_LOADED_ONCE = true;
   } catch (e) {
     $("#main").innerHTML = `<div class="err">โหลดข้อมูลไม่ได้ (${esc(e.message)}) — ลองรีเฟรชอีกครั้ง</div>`;
     $("#stamp").textContent = "";
@@ -146,15 +195,28 @@ function render() {
   const dp = CUR === "BTC" ? 0 : 1;
   $("#main").innerHTML = `
     <section>
+      <h2>⓪ Bias ทิศทาง + แผนที่ราคา</h2>
+      ${biasCard(d)}
+      <div class="pricebox">
+        <label for="px">ราคาที่อยากดู (แก้ได้ — ระดับทั้งหมดจะเทียบกับราคานี้)</label>
+        <div class="pxrow">
+          <input id="px" inputmode="decimal" autocomplete="off" value="${PX[CUR] ?? d.spot.toFixed(dp)}">
+          <button id="pxReset" type="button">คืนค่า ${fmt(d.spot, dp)}</button>
+        </div>
+      </div>
+      <div id="map"></div>
+    </section>
+
+    <section>
       <h2>① ตอนนี้ตลาดอยู่โหมดไหน</h2>
       <div class="mode">
         <div class="big">${d.mode.icon} ${esc(d.mode.mode)}</div>
         <div class="why">${esc(d.mode.why)}</div>
         <div class="do">▶ ${esc(d.mode.do)}</div>
         <div class="kv">
-          <div><span>max pain</span><b>${fmt(o.max_pain, dp)}</b></div>
-          <div><span>โซนตรึง</span><b>${o.pin_zone ? fmt(o.pin_zone[0], dp) + "–" + fmt(o.pin_zone[1], dp) : "—"}</b></div>
-          <div><span>กำแพง put / call</span><b>${fmt(o.put_wall, dp)} / ${fmt(o.call_wall, dp)}</b></div>
+          <div><span>max pain</span><b>${fv(o.max_pain)}</b></div>
+          <div><span>โซนตรึง</span><b>${o.pin_zone ? fv(o.pin_zone[0]) + "–" + fv(o.pin_zone[1]) : "—"}</b></div>
+          <div><span>กำแพง put / call</span><b>${fv(o.put_wall)} / ${fv(o.call_wall)}</b></div>
           <div><span>ออปชันชุดนี้หมดอายุ ${o.expiry_utc ? esc(thTime(o.expiry_utc)) + " น." : ""}</span><b>อีก ${fmt(o.hours_left, 1)} ชม.</b></div>
         </div>
       </div>
@@ -181,6 +243,164 @@ function render() {
       <h2>④ สรุป — ข้อที่กล้าเอาไปใช้จริง</h2>
       ${summary(d)}
     </section>`;
+
+  const px = $("#px");
+  px.oninput = () => {
+    const v = parseFloat(px.value.replace(/[^\d.]/g, ""));
+    if (isFinite(v) && v > 0) { PX[CUR] = v; renderMap(); }
+  };
+  $("#pxReset").onclick = () => { delete PX[CUR]; px.value = d.spot.toFixed(dp); renderMap(); };
+  renderMap();
+}
+
+// ---------- ⓪ bias ----------
+function biasCard(d) {
+  const b = d.bias;
+  if (!b) return `<div class="sum">bias จะแสดงหลังตัวคำนวณรันรอบถัดไป</div>`;
+  const p = b.proven;
+  const until = new Date(new Date(DATA.generated_at_utc).getTime() + 8 * 36e5);
+  const head = p ? (p.dir === "up" ? ["🔺", "เอียงขึ้น", "b-up"] : ["🔻", "เอียงลง", "b-dn"])
+                 : ["➖", "ไม่มี bias ที่พิสูจน์แล้ว", ""];
+  let body;
+  if (p) {
+    const other = p.dir === "up" ? `ยังปิดต่ำลงได้ ${fmt(100 - p.up8h, 1)}% ของครั้ง` : `ยังปิดสูงขึ้นได้ ${fmt(p.up8h, 1)}% ของครั้ง`;
+    const agree = b.context.filter(c => c.dir === p.dir).length;
+    const against = b.context.filter(c => c.dir !== "flat" && c.dir !== p.dir).length;
+    body = `
+      <div class="why"><b>เพราะ</b> ${esc(p.why)} — ${esc(p.stat)} <span class="badge b-proven">✅ พิสูจน์แล้ว</span></div>
+      <div class="note">n=${p.n} · ${esc(p.window)} · แบ่งครึ่งตัวอย่าง ${(p.halves || []).map(h => fmt(h, 1) + "%").join(" / ")}
+        · ใช้ได้ถึง ${esc(thTime(until))} น.${Date.now() > until ? " — ⚠️ หมดช่วงแล้ว รอข้อมูลรอบใหม่" : ""}
+        · เอียง ≠ แน่นอน: ${other} · ตัวอย่างมาจากช่วงตลาดเดียว 3 เดือน</div>
+      <div class="note">บริบทด้านล่าง: หนุน ${agree} · ขัด ${against}</div>`;
+  } else {
+    body = `<div class="why">ตอนนี้ไม่มีข้อไหนที่ผ่านการพิสูจน์ชี้ทิศทาง — บริบทด้านล่างเป็นข้อเท็จจริงประกอบ ห้ามนับรวมเป็นสัญญาณแทน</div>`;
+  }
+  return `<div class="bias ${head[2]}">
+    <div class="big">${head[0]} ${head[1]}${p ? " <small>ช่วง 8 ชม.</small>" : ""}</div>
+    ${body}
+    <div class="ctxh">บริบทประกอบ <span class="badge b-none">⬜ ยังไม่มีสถิติ</span></div>
+    ${b.context.map(c => `<div class="ctx"><span class="arr ${c.dir}">${c.dir === "up" ? "▲" : c.dir === "down" ? "▼" : "–"}</span>
+      <div><b>${esc(c.name)}</b><div class="ls">${esc(c.fact)}</div></div></div>`).join("")}
+  </div>`;
+}
+
+// ---------- ⓪ แผนที่ราคา ----------
+// ตัวเลขระดับราคา: strike ออปชันเป็นเลขกลม (2,450) ไม่ต้องโชว์ .0 · ค่าที่คำนวณได้ (EMA/ATR/1SD) โชว์ทศนิยมตามเหรียญ
+const fv = v => fmt(v, Number.isInteger(+v) ? 0 : (CUR === "BTC" ? 0 : 1));
+
+function levels(d) {
+  const o = d.options || {}, v = d.vol || {}, L = [];
+  const dp = CUR === "BTC" ? 0 : 1;
+  const add = (val, src, label, sub, cls, short) => {
+    if (val != null && isFinite(val)) L.push({val: +val, src, label, sub, cls, short});
+  };
+  const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "หมดอายุ";
+  add(o.call_wall, "wall", "กำแพงบน — call OI หนาสุด", o.call_wall_oi != null ? `OI ${fmt(o.call_wall_oi, 1)} ${CUR}` : "", "c-red", "กำแพง call");
+  add(o.max_pain, "mp", "max pain", `ราคาที่คนถือออปชันเจ็บรวมมากสุด ณ ${exp}`, "c-amber", "max pain");
+  if (o.pin_zone) {
+    add(o.pin_zone[1], "pin", "ขอบบนโซนตรึง (GEX)", "ในโซนมักถูกดูดกลับเข้ากลาง", "c-violet", "ขอบบนโซนตรึง");
+    add(o.pin_zone[0], "pin", "ขอบล่างโซนตรึง (GEX)", "หลุดโซน = แรงตรึงอ่อนลง", "c-violet", "ขอบล่างโซนตรึง");
+  }
+  if (o.sd1_range) {
+    add(o.sd1_range[1], "sd1", "ขอบบนกรอบ 1SD", `ตลาดออปชันตั้งราคาไว้ถึง ${exp}`, "c-blue", "ขอบบน 1SD");
+    add(o.sd1_range[0], "sd1", "ขอบล่างกรอบ 1SD", `ตลาดออปชันตั้งราคาไว้ถึง ${exp}`, "c-blue", "ขอบล่าง 1SD");
+  }
+  add(o.put_wall, "wall", "กำแพงล่าง — put OI หนาสุด", o.put_wall_oi != null ? `OI ${fmt(o.put_wall_oi, 1)} ${CUR}` : "", "c-green", "กำแพง put");
+  const atr = v.atr14_prev ?? v.atr14;
+  if (atr) {
+    if (v.day_high != null && v.day_low != null) {
+      const used = (v.day_high - v.day_low) / atr * 100;
+      // ช่วงแกว่งเต็มวัน: ต่ำสุดของวัน + ATR = สูงสุดที่ยังไปได้ถ้าวิ่งแค่ขนาดปกติ (กลับกันสำหรับพื้น)
+      if (used < 100) {
+        const note = `ATR ${fmt(atr, dp)} · วันนี้ใช้ไป ${fmt(used, 0)}%`;
+        add(v.day_low + atr, "atr", "เพดานช่วงแกว่งเต็มวัน", "ต่ำสุดวันนี้ + " + note, "c-gray", "เพดาน ATR");
+        add(v.day_high - atr, "atr", "พื้นช่วงแกว่งเต็มวัน", "สูงสุดวันนี้ − " + note, "c-gray", "พื้น ATR");
+      }
+    } else {
+      add(d.spot + atr, "atr", "เพดานช่วงแกว่งเต็มวัน", `ราคาล่าสุด + ATR ${fmt(atr, dp)}`, "c-gray", "เพดาน ATR");
+      add(d.spot - atr, "atr", "พื้นช่วงแกว่งเต็มวัน", `ราคาล่าสุด − ATR ${fmt(atr, dp)}`, "c-gray", "พื้น ATR");
+    }
+  }
+  add(v.ema30, "ema30", "EMA30 (1D)", "ยืนเหนือเส้น = ยังเป็นขาขึ้นระยะกลาง", "c-teal", "EMA30");
+  add(v.ema200, "ema200", "EMA200 (1D)", "ยืนเหนือเส้น = ยังเป็นขาขึ้นระยะยาว", "c-teal", "EMA200");
+  return L.sort((a, b) => b.val - a.val);
+}
+
+// โซนน่าสนใจ = ระดับจากเครื่องมือต่างชนิดกันตั้งแต่ 2 ตัวขึ้นไปมากองใกล้กัน (ห่างกันไม่เกิน tol)
+function zones(L, tol) {
+  const s = [...L].sort((a, b) => a.val - b.val), groups = [];
+  let cur = [];
+  for (const l of s) {
+    if (cur.length && (l.val - cur[cur.length - 1].val > tol || l.val - cur[0].val > 2 * tol)) { groups.push(cur); cur = []; }
+    cur.push(l);
+  }
+  if (cur.length) groups.push(cur);
+  return groups.map(g => ({lo: g[0].val, hi: g[g.length - 1].val, items: g, srcs: new Set(g.map(x => x.src)).size}))
+    .filter(z => z.srcs >= 2);
+}
+
+function where(d, P) {
+  const o = d.options || {}, out = [];
+  if (o.pin_zone) {
+    const [lo, hi] = o.pin_zone, rng = `${fv(lo)} – ${fv(hi)}`;
+    if (P >= lo && P <= hi) out.push({cls: "in", t: "🧲 อยู่ในโซนตรึง (GEX)", s: `${rng} · แรงออปชันมักดึงกลับเข้ากลาง — ไล่ราคาในโซนมักโดนดึงกลับ`});
+    else out.push({cls: "", t: P > hi ? "⬆ อยู่เหนือโซนตรึง" : "⬇ อยู่ใต้โซนตรึง", s: `โซน ${rng} · นอกโซนแรงตรึงอ่อนลง ราคาวิ่งได้อิสระกว่า`});
+  }
+  if (o.sd1_range && (P > o.sd1_range[1] || P < o.sd1_range[0]))
+    out.push({t: "⚡ หลุดกรอบ 1SD", s: "เคลื่อนแรงกว่าที่ตลาดออปชันตั้งราคาไว้"});
+  if (o.call_wall && P >= o.call_wall) out.push({t: "🧱 ทะลุกำแพง call", s: `เหนือ ${fv(o.call_wall)} — คนขาย call ต้องไล่ซื้อป้องกันความเสี่ยง`});
+  if (o.put_wall && P <= o.put_wall) out.push({t: "🧱 หลุดกำแพง put", s: `ใต้ ${fv(o.put_wall)} — คนขาย put ต้องไล่ขายป้องกันความเสี่ยง`});
+  if (o.max_pain) {
+    const g = (o.max_pain - P) / P * 100;
+    out.push({t: "", s: `max pain อยู่${g >= 0 ? "เหนือ" : "ใต้"}ราคานี้ ${fmt(Math.abs(g), 1)}%`});
+  }
+  return out;
+}
+
+function renderMap() {
+  const d = DATA.symbols[CUR], dp = CUR === "BTC" ? 0 : 1, v = d.vol || {};
+  const P = PX[CUR] ?? d.spot;
+  const L = levels(d);
+  if (!L.length) { $("#map").innerHTML = `<div class="sum">ข้อมูลชุดนี้ยังไม่มีระดับราคาให้วาด</div>`; return; }
+  const pct = x => { const g = (x - P) / P * 100; return `<span class="${g >= 0 ? "up" : "dn"}">${g >= 0 ? "+" : ""}${fmt(g, 1)}%</span>`; };
+
+  const W = where(d, P), main = W.find(w => w.t) || {t: "", s: ""};
+  const rest = W.filter(w => w !== main);
+  const whereHtml = `<div class="where ${main.cls || ""}">
+    <div class="wt">${esc(main.t)}</div><div>${esc(main.s)}</div>
+    ${rest.length ? `<div class="more">${rest.map(w => `${w.t ? "<b>" + esc(w.t) + "</b> · " : ""}${esc(w.s)}`).join("<br>")}</div>` : ""}
+  </div>`;
+
+  const atr = v.atr14_prev ?? v.atr14;
+  const tol = atr ? atr * 0.25 : P * 0.004;
+  const Z = zones(L, tol);
+  const zin = Z.filter(z => P >= z.lo && P <= z.hi);
+  const zup = Z.filter(z => z.lo > P).sort((a, b) => a.lo - b.lo).slice(0, 2);
+  const zdn = Z.filter(z => z.hi < P).sort((a, b) => b.hi - a.hi).slice(0, 2);
+  const zRow = (z, kind) => {
+    const rng = z.lo === z.hi ? fv(z.lo) : `${fv(z.lo)} – ${fv(z.hi)}`;
+    const ref = kind === "res" ? z.lo : kind === "sup" ? z.hi : P;
+    const name = kind === "res" ? "🔺 แนวต้าน" : kind === "sup" ? "🔻 แนวรับ" : "📍 ราคาอยู่ในโซน";
+    return `<div class="zone ${kind}"><div class="zt"><span>${name} ${rng}</span>${kind === "in" ? "" : pct(ref)}</div>
+      <div class="ls">${z.items.length} ระดับจาก ${z.srcs} เครื่องมือมากองรวมกัน: ${z.items.map(i => esc(i.short)).join(" · ")}</div></div>`;
+  };
+  const zoneHtml = (zin.length + zup.length + zdn.length)
+    ? `<div class="ctxh">โซนน่าสนใจ <span class="badge b-none">⬜ ยังไม่มีสถิติว่าเด้งจริงกี่ %</span></div>
+       <div class="zones">${zup.slice().reverse().map(z => zRow(z, "res")).join("")}${zin.map(z => zRow(z, "in")).join("")}${zdn.map(z => zRow(z, "sup")).join("")}</div>`
+    : `<div class="note">ไม่มีโซนที่หลายเครื่องมือชี้ตรงกันใกล้ราคานี้</div>`;
+
+  const above = L.filter(l => l.val > P), below = L.filter(l => l.val <= P);
+  const row = l => `<div class="lv ${l.cls}"><b>${fv(l.val)}</b>
+      <div><div class="lt">${esc(l.label)}</div>${l.sub ? `<div class="ls">${esc(l.sub)}</div>` : ""}</div>${pct(l.val)}</div>`;
+  const ladder = `<div class="ctxh">แผนที่ราคา</div><div class="ladder">
+    ${above.map(row).join("")}
+    <div class="lv now"><b>${fmt(P, dp)}</b><div class="lt">⬅ ราคาที่ดู</div><span></span></div>
+    ${below.map(row).join("")}
+  </div>
+  <div class="note">ระดับจากออปชัน (กำแพง · max pain · โซนตรึง · 1SD) ใช้ได้ถึงวันหมดอายุชุดนี้ และยังไม่มีสถิติของเราเองว่าราคาเคารพจริงกี่ % ·
+    ATR และ EMA คำนวณจากราคาจริง เป็นข้อเท็จจริง ไม่ใช่คำทำนาย</div>`;
+
+  $("#map").innerHTML = whereHtml + zoneHtml + ladder;
 }
 
 function timeline(d) {

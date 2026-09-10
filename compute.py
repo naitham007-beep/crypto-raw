@@ -187,6 +187,8 @@ def option_metrics(oi_raw, sum_raw, spot, now):
 
     call_wall = max(C, key=C.get) if C else None
     put_wall = max(P, key=P.get) if P else None
+    call_wall_oi = round(C[call_wall], 1) if call_wall is not None else None
+    put_wall_oi = round(P[put_wall], 1) if put_wall is not None else None
 
     # โซนตรึง — ช่วง strike ที่ gamma x OI หนาแน่นที่สุด (แรงที่ดูดราคาไว้)
     # จับคู่ด้วย (strike, ชนิด) ไม่ประกอบรหัสสัญญาเอง — กันพังเวลารูปแบบรหัสเปลี่ยน
@@ -236,20 +238,29 @@ def option_metrics(oi_raw, sum_raw, spot, now):
             rr25 = round((min(calls)[1] - min(puts)[1]) * 100, 2)
 
     # IV30 — IV ที่ราคาปัจจุบันของสัญญาอายุใกล้ 30 วัน (ตัวที่เทียบกับความผันผวนจริง 30 วันได้อย่างยุติธรรม)
-    iv30 = None
-    c30 = []
+    # + 25ΔRR ของสัญญาเดียวกัน — ตัวใกล้หมดอายุ (rr25 ด้านบน) delta เพี้ยนแรง ETH เคยออก +14 จุด ใช้เป็นบริบทไม่ได้
+    #   delta ใช้ deltaBS (Black-Scholes) ถ้ามี · delta ปกติของ OKX เป็นแบบหักค่าออปชัน (PA) ของสัญญาที่วางเหรียญเป็นหลักประกัน
+    iv30, rr25_30 = None, None
+    c30, calls30, puts30 = [], [], []
     for inst, g in greeks.items():
         p = parse_inst(inst)
         if not p or p[0] != ex30:
             continue
         try:
             iv = float(g.get("markVol") or 0)
+            dl = float(g.get("deltaBS") or g.get("delta") or 0)
         except (TypeError, ValueError):
             continue
         if iv > 0:
             c30.append((abs(p[1] - spot), iv))
+            if p[2] == "C" and dl > 0:
+                calls30.append((abs(dl - 0.25), iv))
+            elif p[2] == "P" and dl < 0:
+                puts30.append((abs(dl + 0.25), iv))
     if c30:
         iv30 = round(min(c30)[1] * 100, 1)
+    if calls30 and puts30:
+        rr25_30 = round((min(calls30)[1] - min(puts30)[1]) * 100, 2)
 
     hours_left = (blk["dt"] - now).total_seconds() / 3600.0
     sd1 = None
@@ -264,21 +275,36 @@ def option_metrics(oi_raw, sum_raw, spot, now):
         "max_pain": best_k,
         "call_wall": call_wall,
         "put_wall": put_wall,
+        "call_wall_oi": call_wall_oi,
+        "put_wall_oi": put_wall_oi,
         "pin_zone": pin_zone,
         "atm_iv": atm_iv,
         "iv30": iv30,
         "iv30_expiry": ex30,
         "rr25": rr25,
+        "rr25_30": rr25_30,
         "sd1_move": round(sd1, 1) if sd1 else None,
         "sd1_range": [round(spot - sd1, 1), round(spot + sd1, 1)] if sd1 else None,
     }
 
 
+def ema(vals, n):
+    """EMA มาตรฐาน (เริ่มจาก SMA n ตัวแรก) · ข้อมูลยาวกว่า n หลายเท่า ค่าเริ่มต้นถึงจะจางจนไม่มีผล"""
+    if len(vals) < n:
+        return None
+    k = 2.0 / (n + 1)
+    e = sum(vals[:n]) / n
+    for v in vals[n:]:
+        e = v * k + e * (1 - k)
+    return e
+
+
 def realized_vol_and_atr(symbol):
-    """ความผันผวนที่เกิดขึ้นจริง 30 วัน + ATR ปัจจุบันอยู่เปอร์เซ็นไทล์ไหนของ 1 ปี (klines ย้อนหลังได้เสมอ)"""
+    """ความผันผวนที่เกิดขึ้นจริง 30 วัน + ATR ปัจจุบันอยู่เปอร์เซ็นไทล์ไหนของ 1 ปี + EMA + กรอบของวันนี้ (klines ย้อนหลังได้เสมอ)"""
     try:
+        # 1000 วัน (เดิม 400) — EMA200 ต้องมีข้อมูลก่อนหน้ายาวพอ ค่าถึงจะตรงกับกราฟทั่วไป
         kl = fetch_json("https://data-api.binance.vision/api/v3/klines"
-                        "?symbol=%sUSDT&interval=1d&limit=400" % symbol)
+                        "?symbol=%sUSDT&interval=1d&limit=1000" % symbol)
     except Exception as e:
         print("ดึง klines ไม่ได้: %s" % e, file=sys.stderr)
         return {}
@@ -297,12 +323,23 @@ def realized_vol_and_atr(symbol):
     atrs = [sum(trs[i - 14:i]) / 14 for i in range(14, len(trs) + 1)]
     atr_now = atrs[-1]
     atr_pct_of_price = 100.0 * atr_now / closes[-1]
+
+    # แท่งวันนี้ยังไม่ปิด → EMA และ ATR ที่ใช้วาดกรอบ ใช้เฉพาะวันที่ปิดแล้ว ค่าจะนิ่งทั้งวัน ไม่ไหลตามราคา
+    done = closes[:-1]
+    e30, e200 = ema(done, 30), ema(done, 200)
+    atr_prev = atrs[-2] if len(atrs) >= 2 else atr_now
     return {
         "rv30": round(rv30, 1),
         "atr14": round(atr_now, 1),
         "atr_pct": round(atr_pct_of_price, 2),
         "atr_percentile_1y": pct_rank(atrs[-365:], atr_now),
         "atr_n": len(atrs[-365:]),
+        "atr14_prev": round(atr_prev, 1),
+        "ema30": round(e30, 1) if e30 else None,
+        "ema200": round(e200, 1) if e200 else None,
+        "day_open": float(kl[-1][1]),   # แท่งวันเริ่ม 00:00 UTC = 07:00 น. ไทย
+        "day_high": highs[-1],
+        "day_low": lows[-1],
     }
 
 
@@ -421,6 +458,67 @@ def build_checks(sym, spot, opt, fund, rv, prev):
     return checks
 
 
+def build_bias(sym, spot, opt, fund, rv):
+    """bias ทิศทาง — แยกข้อที่มีหลักฐานออกจากบริบทเด็ดขาด
+
+    proven  = ข้อที่ผ่าน backtest + แบ่งครึ่งตัวอย่างแล้วยืน (ตอนนี้มีแค่ funding ของ BTC)
+    context = ข้อเท็จจริงที่ชี้ทิศได้ แต่ยังไม่มีสถิติ → หน้าเว็บห้ามนับรวมเป็นสัญญาณ ใช้ดูว่าหนุนหรือขัดเท่านั้น
+    ไม่มีข้อ proven = บอกตรงๆ ว่าไม่มี bias ห้ามเอาบริบทมานับคะแนนแทน
+    """
+    proven = None
+    if fund and fund.get("bucket"):
+        ev = FUNDING_EVIDENCE.get(sym, {})
+        bk = ev.get("buckets", {}).get(fund["bucket"], {})
+        base = ev.get("baseline_up8h")
+        if bk.get("stable") and bk.get("n", 0) >= 30 and base:
+            diff = round(bk["up8h"] - base, 1)
+            if abs(diff) >= 5:   # ต่างจากปกติไม่ถึง 5 จุด = เล็กเกินจะเรียกว่าเอียง
+                proven = {
+                    "dir": "up" if diff > 0 else "down",
+                    "horizon_h": 8,
+                    "why": "funding %s" % BUCKET_TH.get(fund["bucket"], fund["bucket"]),
+                    "stat": "ในอดีตราคาปิดสูงขึ้นใน 8 ชม.ถัดไป %s%% ของครั้ง (ปกติ %s%%)" % (bk["up8h"], base),
+                    "up8h": bk["up8h"], "base": base,
+                    "edge": diff, "n": bk["n"], "halves": bk.get("halves"), "window": ev.get("window"),
+                }
+
+    ctx = []
+    if opt and opt.get("max_pain"):
+        mp = opt["max_pain"]
+        gap = 100.0 * (mp - spot) / spot
+        ctx.append({
+            "name": "แรงดูดเข้า max pain",
+            "dir": "up" if gap > 0.3 else ("down" if gap < -0.3 else "flat"),
+            "fact": "max pain %s (%+.1f%%) · ออปชันชุดนี้หมดอายุอีก %s ชม." % (f"{mp:,.0f}", gap, opt.get("hours_left")),
+        })
+    rr = opt.get("rr25_30") if opt else None
+    if rr is not None:
+        ctx.append({
+            "name": "ราคา call เทียบ put (25ΔRR สัญญา ~30 วัน)",
+            "dir": "up" if rr >= 2 else ("down" if rr <= -2 else "flat"),
+            "fact": "%+.1f จุด · บวก = ตลาดยอมจ่ายแพงกว่าเพื่อเก็งขึ้น · ใกล้ 0 = ไม่เอียง" % rr,
+        })
+    e30, e200 = rv.get("ema30"), rv.get("ema200")
+    if e30 and e200:
+        if spot > e30 > e200:
+            d, f = "up", "ราคา > EMA30 > EMA200 — ขาขึ้นเรียงตัว"
+        elif spot < e30 < e200:
+            d, f = "down", "ราคา < EMA30 < EMA200 — ขาลงเรียงตัว"
+        else:
+            d, f = "flat", "เส้นไม่เรียงตัว — แนวโน้มไม่ชัด"
+        ctx.append({"name": "แนวโน้ม EMA (1D)", "dir": d,
+                    "fact": "%s · EMA30 %s · EMA200 %s" % (f, f"{e30:,.0f}", f"{e200:,.0f}")})
+    for c in ctx:
+        c["evidence"] = "none"
+
+    return {
+        "proven": proven,
+        "context": ctx,
+        "ctx_up": sum(1 for c in ctx if c["dir"] == "up"),
+        "ctx_down": sum(1 for c in ctx if c["dir"] == "down"),
+    }
+
+
 def decide_mode(sym, spot, opt, checks):
     """สรุปโหมดตลาดจากสิ่งที่ตรวจได้จริง — เขียนให้อ่านแล้วรู้ว่ากำลังเจอสภาพแบบไหน"""
     inside_pin = any(c["key"] == "pin_zone" and c["state"] == "in" for c in checks)
@@ -533,10 +631,11 @@ def main():
                      if isinstance(h, dict) and sym in h.get("symbols", {})), None)
         checks = build_checks(sym, spot, opt, fund, rv, prev)
         mode = decide_mode(sym, spot, opt, checks)
+        bias = build_bias(sym, spot, opt, fund, rv)
 
         out["symbols"][sym] = {
             "spot": spot, "change_24h": chg24, "mode": mode,
-            "options": opt, "funding": fund, "vol": rv, "checks": checks,
+            "options": opt, "funding": fund, "vol": rv, "checks": checks, "bias": bias,
         }
         print("%s %s · โหมด %s · เช็ก %d ข้อ" % (sym, f"{spot:,.1f}", mode["mode"], len(checks)))
 
