@@ -78,13 +78,19 @@ footer a{color:var(--accent)}
   <main id="main"></main>
   <footer>
     อัพเดทอัตโนมัติทุก 2 ชม. จากข้อมูลสาธารณะของ OKX · Binance · Deribit ·
-    <a href="https://github.com/naitham007-beep/crypto-raw">คลังข้อมูลดิบ</a><br>
+    <a id="repoLink" href="https://github.com/korntrade/crypto-raw">คลังข้อมูลดิบ</a><br>
     หน้านี้บอกสภาพตลาดและระดับหลักฐานของแต่ละข้อ — ไม่ใช่คำแนะนำการลงทุน การตัดสินใจเข้า/ออกเป็นของผู้ใช้เอง
   </footer>
 </div>
 
 <script>
-const DATA_URL = "https://raw.githubusercontent.com/naitham007-beep/crypto-raw/main/web/latest.json";
+// หา owner/repo จากลิงก์ที่เปิดอยู่ (xxx.github.io/<repo>) — ย้าย repo ไปองค์กรไหนหน้าก็ยังชี้ถูก ไม่ต้องแก้โค้ด
+const REPO = (() => {
+  const h = location.hostname, seg = location.pathname.split("/").filter(Boolean)[0];
+  if (h.endsWith(".github.io") && seg) return h.split(".")[0] + "/" + seg;
+  return "korntrade/crypto-raw";
+})();
+const DATA_URL = "https://raw.githubusercontent.com/" + REPO + "/main/web/latest.json";
 const STALE_HOURS = 3;
 const EV = {
   proven: ["✅ พิสูจน์แล้ว", "b-proven"],
@@ -220,6 +226,7 @@ function summary(d) {
   </div>`;
 }
 
+document.getElementById("repoLink").href = "https://github.com/" + REPO;
 load();
 setInterval(load, 10 * 60 * 1000);
 </script>
