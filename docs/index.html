@@ -149,7 +149,7 @@ function render() {
           <div><span>max pain</span><b>${fmt(o.max_pain, dp)}</b></div>
           <div><span>โซนตรึง</span><b>${o.pin_zone ? fmt(o.pin_zone[0], dp) + "–" + fmt(o.pin_zone[1], dp) : "—"}</b></div>
           <div><span>กำแพง put / call</span><b>${fmt(o.put_wall, dp)} / ${fmt(o.call_wall, dp)}</b></div>
-          <div><span>หมดอายุ ${esc(o.expiry || "")}</span><b>อีก ${fmt(o.hours_left, 1)} ชม.</b></div>
+          <div><span>ออปชันชุดนี้หมดอายุ ${o.expiry_utc ? esc(thTime(o.expiry_utc)) + " น." : ""}</span><b>อีก ${fmt(o.hours_left, 1)} ชม.</b></div>
         </div>
       </div>
     </section>
