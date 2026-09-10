@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>อ่านตลาด BTC · ETH แบบเข้าใจง่าย</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ชุดสีตามคู่มือกราฟ (reference palette) — โหมดมืดเป็นค่าที่เลือกไว้แยก ไม่ใช่กลับสีอัตโนมัติ */
+:root{
+  color-scheme: light;
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --s1:#2a78d6;           /* ช่วงคาดการณ์ 1SD */
+  --s2:#eb6834;           /* max pain */
+  --s3:#1baf7a;           /* โซนแม่เหล็ก */
+  --s1-track:#cde2fb;
+  --wall:#898781;
+  --good:#006300; --warn:#fab219; --crit:#d03b3b; --up:#006300; --dn:#d03b3b;
+  --mid:#f0efec; --cold:#2a78d6; --cool:#86b6ef; --warm:#f0a3a3; --hot:#e34948;
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s1-track:#184f95; --wall:#a3a097;
+    --good:#0ca30c; --up:#0ca30c; --dn:#e66767; --crit:#d03b3b;
+    --mid:#383835; --cold:#3987e5; --cool:#1c5cab; --warm:#8a3a3a; --hot:#e66767;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s1-track:#184f95; --wall:#a3a097;
+  --good:#0ca30c; --up:#0ca30c; --dn:#e66767; --crit:#d03b3b;
+  --mid:#383835; --cold:#3987e5; --cool:#1c5cab; --warm:#8a3a3a; --hot:#e66767;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);
+  font:15px/1.6 "IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:720px;margin:0 auto;padding:14px 14px 56px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+h1{font-size:18px;margin:4px 0}
+.stamp{font-size:13px;color:var(--ink2)}
+.stale{background:color-mix(in oklab,var(--crit) 14%,var(--surface));color:var(--ink);border-radius:10px;padding:10px 12px;margin:10px 0;font-weight:600}
+.coins{display:flex;gap:6px;margin:12px 0}
+.coins button{flex:1;font:inherit;font-weight:600;padding:9px;border-radius:10px;border:1px solid var(--grid);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+.coins button[aria-pressed=true]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.card{background:var(--surface);border:1px solid var(--ring);border-radius:14px;padding:16px;margin-top:14px}
+h2{font-size:16px;margin:0 0 2px}
+.sub{font-size:13px;color:var(--ink2);margin:0 0 10px}
+.muted{font-size:12.5px;color:var(--ink2)}
+/* hero */
+.hero .coin{font-size:13px;color:var(--ink2);font-weight:600;letter-spacing:.04em}
+.hero .big{font-size:48px;font-weight:700;line-height:1.1}
+.hero .chg{font-size:14px;font-weight:600}
+.up{color:var(--up)} .dn{color:var(--dn)}
+.story{margin:12px 0 0;padding:0;list-style:none}
+.story li{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--grid)}
+.story li span:first-child{flex:none;width:22px;text-align:center}
+/* แผนที่สนาม */
+#field{width:100%;position:relative}
+#field svg{display:block;width:100%;height:auto;overflow:visible}
+.axis-t{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}
+.lbl{font-size:12px;fill:var(--ink2)}
+.lbl-b{font-size:12.5px;fill:var(--ink);font-weight:600}
+.pill{fill:var(--ink)}
+.pill-t{font-size:12.5px;fill:var(--surface);font-weight:700}
+.hit{fill:transparent;cursor:pointer;outline:none}
+.hit:focus-visible{stroke:var(--ink);stroke-width:1}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12.5px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:14px;height:10px;border-radius:3px}
+.sw.line{height:2px;width:14px;border-radius:1px}
+.sw.dia{width:9px;height:9px;transform:rotate(45deg);border-radius:1px}
+.sw.bar{width:4px;height:12px;border-radius:2px}
+details{margin-top:10px}
+summary{cursor:pointer;font-size:13px;color:var(--ink2)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:6px}
+td,th{padding:6px 8px;border-bottom:1px solid var(--grid);text-align:left}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl{overflow-x:auto}
+/* คำถาม 3 ข้อ */
+.ans{font-size:22px;font-weight:700;margin:4px 0 8px}
+.ans small{font-size:13px;font-weight:500;color:var(--ink2)}
+.waffles{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 10px}
+.waffle .g{display:grid;grid-template-columns:repeat(10,10px);gap:2px}
+.waffle .g i{width:10px;height:10px;border-radius:2px;background:var(--grid)}
+.waffle .g i.on{background:var(--ink2)}
+.waffle.now .g i.on{background:var(--ink)}
+.waffle .cap{font-size:12.5px;color:var(--ink2);margin-top:4px}
+.waffle .cap b{color:var(--ink);font-size:15px}
+.meter{position:relative;height:14px;border-radius:7px;background:var(--s1-track);overflow:hidden;margin:10px 0 4px}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:7px 4px 4px 7px;background:var(--s1)}
+.meter.warn i{background:var(--warn)} .meter.crit i{background:var(--crit)}
+.state{display:flex;gap:8px;align-items:baseline;font-weight:600}
+.heat{position:relative;margin:28px 0 4px}
+.heat .segs{display:flex;gap:2px;height:14px}
+.heat .segs i{flex:1;border-radius:3px}
+.heat .mk{position:absolute;top:-24px;transform:translateX(-50%);font-size:12px;font-weight:700;white-space:nowrap}
+.heat .mk::after{content:"";position:absolute;left:50%;top:18px;margin-left:-5px;border:5px solid transparent;border-top-color:var(--ink)}
+.heat .names{display:flex;gap:2px;font-size:11.5px;color:var(--ink2);margin-top:3px}
+.heat .names span{flex:1;text-align:center}
+#trend svg{display:block;width:100%;height:auto;overflow:visible}
+.gloss{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:6px}
+.gloss div{border:1px solid var(--grid);border-radius:12px;padding:10px 12px}
+.gloss b{display:block;margin-bottom:2px}
+.badge{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:99px;border:1px solid var(--grid);color:var(--ink2);white-space:nowrap}
+#tip{position:fixed;z-index:10;max-width:260px;background:var(--surface);color:var(--ink);border:1px solid var(--ring);
+  box-shadow:0 6px 24px rgba(0,0,0,.18);border-radius:10px;padding:8px 10px;font-size:12.5px;line-height:1.45;pointer-events:none}
+#tip b{display:block;font-size:14px}
+footer{margin-top:24px;font-size:12.5px;color:var(--ink2)}
+footer a,.link{color:var(--s1)}
+.err{background:color-mix(in oklab,var(--crit) 14%,var(--surface));padding:14px;border-radius:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📖 อ่านตลาด BTC · ETH แบบเข้าใจง่าย</h1>
+    <div class="stamp" id="stamp">กำลังโหลด…</div>
+  </header>
+  <div id="stale" class="stale" hidden></div>
+  <div class="coins" id="coins"></div>
+  <main id="main"></main>
+  <footer>
+    อัพเดทอัตโนมัติทุก 2 ชม. จากข้อมูลสาธารณะของ OKX · Binance · Deribit ·
+    <a class="link" href="./">ดูแบบละเอียด (เข็มทิศออปชัน) →</a><br>
+    หน้านี้อธิบายสภาพตลาดและบอกตรงๆ ว่าข้อไหนมีสถิติรองรับ — ไม่ใช่คำแนะนำการลงทุน
+  </footer>
+</div>
+<div id="tip" role="tooltip" hidden></div>
+
+<script>
+// หา owner/repo จากลิงก์ที่เปิดอยู่ — ย้าย repo แล้วหน้ายังชี้ถูก
+const REPO = (() => {
+  const h = location.hostname, seg = location.pathname.split("/").filter(Boolean)[0];
+  if (h.endsWith(".github.io") && seg) return h.split(".")[0] + "/" + seg;
+  return "korntrade/crypto-raw";
+})();
+const Q = new URLSearchParams(location.search);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = (v, d = 0) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("th-TH", {maximumFractionDigits: d, minimumFractionDigits: d});
+const thTime = (iso, withDay = true) => new Date(iso).toLocaleString("th-TH", Object.assign({timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit"}, withDay ? {day: "numeric", month: "short"} : {}));
+let DATA = null, HIST = [], CUR = "BTC";
+try { CUR = localStorage.getItem("coin") || "BTC"; } catch (e) {}
+const dp = () => CUR === "BTC" ? 0 : 1;
+const fv = v => fmt(v, Number.isInteger(+v) ? 0 : dp());   // strike กลมไม่โชว์ .0
+
+// ดึงผ่าน GitHub API ก่อน (ไม่มีแคช) · โดนจำกัดค่อยใช้ raw (raw แคชแยกตามจุด CDN — เจอข้อมูลเก่าค้าง 11 ก.ย.)
+async function getJSON(path, override) {
+  if (override) { const r = await fetch(override + "?t=" + Date.now(), {cache: "no-store"}); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=main`, {cache: "no-store"});
+    if (r.ok) {
+      const c = await r.json();
+      if (c.content) return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(c.content.replace(/\n/g, "")), ch => ch.charCodeAt(0))));
+    }
+  } catch (e) {}
+  const r = await fetch(`https://raw.githubusercontent.com/${REPO}/main/${path}?t=${Date.now()}`, {cache: "no-store"});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+async function load() {
+  try {
+    DATA = await getJSON("web/latest.json", Q.get("data"));
+    try { HIST = await getJSON("web/history.json", Q.get("hist")); } catch (e) { HIST = []; }
+    render();
+  } catch (e) {
+    $("#main").innerHTML = `<div class="err">โหลดข้อมูลไม่ได้ (${esc(e.message)}) — ลองรีเฟรชอีกครั้ง</div>`;
+    $("#stamp").textContent = "";
+  }
+}
+
+const BUCKET = {hot: "ร้อนจัด", warm: "อุ่น", mid: "กลางๆ", cool: "เย็น", cold: "เย็นจัด"};
+
+function render() {
+  const ageH = (Date.now() - new Date(DATA.generated_at_utc)) / 36e5;
+  $("#stamp").textContent = "ข้อมูล ณ " + thTime(DATA.generated_at_utc) + " น.";
+  $("#stale").hidden = ageH < 3;
+  $("#stale").textContent = `⚠️ ข้อมูลเก่า ${fmt(ageH, 1)} ชม. — ตัวเก็บอาจสะดุด อย่าใช้ตัดสินใจจนกว่าจะอัพเดท`;
+  const syms = Object.keys(DATA.symbols);
+  if (!syms.includes(CUR)) CUR = syms[0];
+  $("#coins").innerHTML = syms.map(s => `<button type="button" data-s="${s}" aria-pressed="${s === CUR}">${s}</button>`).join("");
+  document.querySelectorAll("#coins button").forEach(b => b.onclick = () => {
+    CUR = b.dataset.s; try { localStorage.setItem("coin", CUR); } catch (e) {} render();
+  });
+
+  const d = DATA.symbols[CUR];
+  $("#main").innerHTML = `
+    ${hero(d)}
+    <section class="card">
+      <h2>🗺️ แผนที่สนาม — ราคาอยู่ตรงไหนเทียบกับแรงในตลาดออปชัน</h2>
+      <p class="sub">ซ้าย = ถูกลง · ขวา = แพงขึ้น · แตะที่แต่ละจุดเพื่ออ่านคำอธิบาย</p>
+      <div id="field"></div>
+      <div class="legend">
+        <span><i class="sw" style="background:color-mix(in oklab,var(--s1) 22%,transparent);box-shadow:inset 0 2px 0 var(--s1)"></i>ช่วงที่ตลาดคาด (1SD)</span>
+        <span><i class="sw" style="background:color-mix(in oklab,var(--s3) 30%,transparent);box-shadow:inset 0 2px 0 var(--s3)"></i>โซนแม่เหล็ก</span>
+        <span><i class="sw dia" style="background:var(--s2)"></i>max pain</span>
+        <span><i class="sw bar" style="background:var(--wall)"></i>รั้ว (กำแพงออปชัน)</span>
+        <span><i class="sw line" style="background:var(--ink)"></i>ราคาตอนนี้</span>
+      </div>
+      ${levelTable(d)}
+    </section>
+    <section class="card">${biasBlock(d)}</section>
+    <section class="card">${rangeBlock(d)}</section>
+    <section class="card">${heatBlock(d)}</section>
+    <section class="card">
+      <h2>🕒 24 ชม.ที่ผ่านมา — ราคาวิ่งเข้าหา max pain ไหม</h2>
+      <p class="sub">เส้นเข้ม = ราคา · เส้นส้ม = max pain · แถบเขียว = โซนแม่เหล็ก · ลากนิ้ว/เมาส์บนกราฟเพื่อดูค่า</p>
+      <div id="trend"></div>
+      ${trendTable()}
+    </section>
+    ${glossary()}`;
+  drawField(d);
+  drawTrend();
+  bindTips(document);
+}
+
+// ---------- ส่วนหัว: ตัวเลขเดียว + สรุปภาษาคน ----------
+function hero(d) {
+  const o = d.options || {}, P = d.spot, ch = d.change_24h, lines = [];
+  const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "";
+  if (o.pin_zone) {
+    const [lo, hi] = o.pin_zone;
+    lines.push(P >= lo && P <= hi
+      ? ["🧲", `ราคาอยู่ใน<b>โซนแม่เหล็ก</b> (${fv(lo)}–${fv(hi)}) — ตรงนี้ราคามักถูกดึงไว้ ไม่ค่อยวิ่งไกล`]
+      : ["🧲", `ราคาอยู่<b>${P < lo ? "ต่ำกว่า" : "สูงกว่า"}โซนแม่เหล็ก</b> (${fv(lo)}–${fv(hi)}) — แรงดึงอ่อนลง ราคาวิ่งได้อิสระกว่า`]);
+  }
+  if (o.sd1_range) lines.push(["📏", `ตลาดออปชันคาดว่าถึง ${exp} ราคาน่าจะอยู่ในช่วง <b>${fv(o.sd1_range[0])}–${fv(o.sd1_range[1])}</b> (ตามทฤษฎีราว 2 ใน 3 ของโอกาส)`]);
+  const p = d.bias && d.bias.proven;
+  if (p) lines.push([p.dir === "down" ? "🔻" : "🔺", `สถิติ funding: ใน 8 ชม.ข้างหน้าราคามัก<b>${p.dir === "down" ? "อ่อนตัว" : "ขึ้น"}บ่อยกว่าปกติ</b> — ปิดสูงขึ้น ${fmt(p.up8h, 0)} จาก 100 ครั้ง (ปกติ ${fmt(p.base, 0)})`]);
+  else if (d.bias) lines.push(["➖", "ตอนนี้<b>ยังไม่มีสัญญาณทิศทางที่มีสถิติรองรับ</b> — หน้านี้จะไม่เดาทิศให้"]);
+  return `<section class="card hero">
+    <div class="coin">${CUR} · ราคาล่าสุด</div>
+    <div class="big">${fmt(P, dp())}</div>
+    ${ch != null ? `<div class="chg ${ch >= 0 ? "up" : "dn"}">${ch >= 0 ? "▲ +" : "▼ "}${fmt(ch, 2)}% ใน 24 ชม.</div>` : ""}
+    <ul class="story">${lines.map(l => `<li><span>${l[0]}</span><span>${l[1]}</span></li>`).join("")}</ul>
+  </section>`;
+}
+
+// ---------- แผนที่สนาม ----------
+let MEASURE = null;
+function textW(s, size = 12, weight = 400) {
+  MEASURE = MEASURE || document.createElement("canvas").getContext("2d");
+  MEASURE.font = `${weight} ${size}px "IBM Plex Sans Thai", system-ui, sans-serif`;
+  return MEASURE.measureText(s).width;
+}
+function niceStep(span, n) {
+  const raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag;
+}
+function pctFrom(P, x) { const g = (x - P) / P * 100; return (g >= 0 ? "+" : "") + fmt(g, 1) + "%"; }
+
+function drawField(d) {
+  const box = $("#field"), o = d.options || {}, v = d.vol || {}, P = d.spot;
+  const W = Math.max(300, box.clientWidth), H = 184, ml = 12, mr = 12;
+  const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "วันหมดอายุ";
+  const sd = o.sd1_move || ((v.atr14_prev || v.atr14 || P * 0.02) / 2);
+  const win = [P - 3.5 * sd, P + 3.5 * sd];          // รั้วที่ไกลเกินจะย้ายไปเป็นลูกศรที่ขอบ
+  const inWin = x => x != null && x >= win[0] && x <= win[1];
+  const pts = [P];
+  [o.sd1_range && o.sd1_range[0], o.sd1_range && o.sd1_range[1], o.pin_zone && o.pin_zone[0], o.pin_zone && o.pin_zone[1],
+   o.max_pain, o.put_wall, o.call_wall].forEach(x => { if (inWin(x)) pts.push(x); });
+  let lo = Math.min(...pts), hi = Math.max(...pts);
+  const pad = (hi - lo) * 0.07 || P * 0.005; lo -= pad; hi += pad;
+  const X = x => ml + (x - lo) / (hi - lo) * (W - ml - mr);
+  const yTop = 34, yBot = 104, yMid = 69;
+  const parts = [];
+
+  // แกน + ขีดตัวเลข (เส้นบางทึบ ไม่ใช่เส้นประ)
+  parts.push(`<line x1="${ml}" x2="${W - mr}" y1="${yMid}" y2="${yMid}" stroke="var(--axis)" stroke-width="1"/>`);
+  const step = niceStep(hi - lo, W < 420 ? 3 : 5);
+  for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) {
+    const x = X(t);
+    parts.push(`<line x1="${x}" x2="${x}" y1="${yBot + 8}" y2="${yBot + 12}" stroke="var(--axis)"/>`);
+    parts.push(`<text class="axis-t" x="${x}" y="${yBot + 25}" text-anchor="middle">${fmt(t, 0)}</text>`);
+  }
+
+  // แถบ 1SD และโซนแม่เหล็ก — สีจางๆ + ขอบบน 2px สีเดียวกัน (ไม่ขีดกรอบรอบ)
+  const band = (a, b, y, h, col, alpha, tip, tipv) => {
+    const x1 = X(Math.max(a, lo)), x2 = X(Math.min(b, hi));
+    parts.push(`<rect x="${x1}" y="${y}" width="${Math.max(2, x2 - x1)}" height="${h}" fill="color-mix(in oklab, var(${col}) ${alpha}%, transparent)"/>`);
+    parts.push(`<rect x="${x1}" y="${y}" width="${Math.max(2, x2 - x1)}" height="2" fill="var(${col})"/>`);
+    parts.push(`<rect class="hit" x="${x1}" y="${y}" width="${Math.max(24, x2 - x1)}" height="${h}" data-tipv="${esc(tipv)}" data-tip="${esc(tip)}" aria-label="${esc(tipv)}"/>`);
+  };
+  if (o.sd1_range) band(o.sd1_range[0], o.sd1_range[1], yTop, yBot - yTop, "--s1", 12,
+    `ช่วงที่ตลาดออปชันตั้งราคาไว้ถึง ${exp} · ตามทฤษฎีราคาจะจบในช่วงนี้ราว 2 ใน 3 ของโอกาส (เรายังไม่ได้วัดจริงว่าแม่นแค่ไหน)`,
+    `ช่วงที่ตลาดคาด ${fv(o.sd1_range[0])}–${fv(o.sd1_range[1])}`);
+  if (o.pin_zone) band(o.pin_zone[0], o.pin_zone[1], yTop + 14, yBot - yTop - 28, "--s3", 26,
+    "ออปชันกองหนาแน่นช่วงนี้ คนดูแลความเสี่ยงต้องซื้อ-ขายสวนทางราคา ราคาจึงมักถูกดึงกลับเข้ามา (ยังไม่มีสถิติของเราเอง)",
+    `โซนแม่เหล็ก ${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`);
+
+  // รั้ว — ถ้าอยู่ในกรอบวาดเป็นแท่ง ถ้าไกลเกินวาดเป็นลูกศรที่ขอบ
+  const labels = [];   // {x, text, anchor}
+  const wall = (x, side, oi) => {
+    if (x == null) return;
+    const name = side === "C" ? "รั้วบน" : "รั้วล่าง";
+    const tip = `strike ที่มีสัญญา ${side === "C" ? "call" : "put"} ค้างมากที่สุด${oi != null ? ` (${fmt(oi, 1)} ${CUR})` : ""} · ถ้าราคาทะลุ คนขายออปชันต้องไล่ป้องกันความเสี่ยง ราคาอาจเร่งตัว`;
+    if (inWin(x)) {
+      const xx = X(x);
+      parts.push(`<rect x="${xx - 2}" y="${yTop}" width="4" height="${yBot - yTop}" rx="2" fill="var(--wall)"/>`);
+      parts.push(`<rect class="hit" x="${xx - 12}" y="${yTop}" width="24" height="${yBot - yTop}" data-tipv="${name} ${fv(x)}" data-tip="${esc(tip)}" aria-label="${name} ${fv(x)}"/>`);
+      labels.push({x: xx, text: `${name} ${fv(x)}`, tipv: `${name} ${fv(x)}`, tip});
+    } else {
+      const right = x > P;
+      labels.push({x: right ? W - mr : ml, anchor: right ? "end" : "start", text: right ? `${name} ${fv(x)} (${pctFrom(P, x)}) →` : `← ${name} ${fv(x)} (${pctFrom(P, x)})`, tipv: `${name} ${fv(x)}`, tip: tip + " · อยู่ไกลเกินกรอบภาพ"});
+    }
+  };
+  wall(o.put_wall, "P", o.put_wall_oi);
+  wall(o.call_wall, "C", o.call_wall_oi);
+
+  // max pain — เพชรสีส้ม ขอบสีพื้น 2px
+  if (o.max_pain != null && inWin(o.max_pain)) {
+    const xx = X(o.max_pain);
+    parts.push(`<rect x="${xx - 6}" y="${yMid - 6}" width="12" height="12" transform="rotate(45 ${xx} ${yMid})" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>`);
+    const tip = `ถ้าราคาปิดตรงนี้ตอนออปชันหมดอายุ (${exp}) คนถือออปชันรวมกันขาดทุนมากที่สุด · ใกล้หมดอายุราคามักถูกดึงเข้าหา (ยังไม่มีสถิติของเราเอง)`;
+    parts.push(`<circle class="hit" cx="${xx}" cy="${yMid}" r="14" data-tipv="max pain ${fv(o.max_pain)}" data-tip="${esc(tip)}" aria-label="max pain ${fv(o.max_pain)}"/>`);
+    labels.push({x: xx, text: `max pain ${fv(o.max_pain)}`, bold: true, tipv: `max pain ${fv(o.max_pain)}`, tip});
+  }
+
+  // ราคาตอนนี้ — เส้นเข้ม + ป้ายด้านบน
+  const xp = X(P);
+  parts.push(`<line x1="${xp}" x2="${xp}" y1="${yTop - 8}" y2="${yBot + 6}" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/>`);
+  const pt = `ราคาตอนนี้ ${fmt(P, dp())}`, pw = textW(pt, 12.5, 700) + 16;
+  const px = Math.min(Math.max(xp - pw / 2, 0), W - pw);
+  parts.push(`<rect class="pill" x="${px}" y="2" width="${pw}" height="22" rx="11"/>`);
+  parts.push(`<text class="pill-t" x="${px + pw / 2}" y="17" text-anchor="middle">${esc(pt)}</text>`);
+  parts.push(`<rect class="hit" x="${xp - 12}" y="0" width="24" height="${yBot + 6}" data-tipv="${esc(pt)}" data-tip="ราคาล่าสุด ณ ${esc(thTime(DATA.generated_at_utc))} น." aria-label="${esc(pt)}"/>`);
+
+  // ป้ายใต้แกน — วางแถวละไม่ชนกัน (วัดความกว้างจริงก่อนวาง)
+  const rows = [[], []], yRow = [yBot + 46, yBot + 64];
+  labels.sort((a, b) => a.x - b.x).forEach(l => {
+    const w = textW(l.text, 12, l.bold ? 600 : 400);
+    let x1 = l.anchor === "end" ? l.x - w : l.anchor === "start" ? l.x : l.x - w / 2;
+    x1 = Math.min(Math.max(x1, 0), W - w);
+    const r = rows.findIndex(row => row.every(([a, b]) => x1 > b + 8 || x1 + w < a - 8));
+    if (r < 0) return;   // ไม่มีที่ว่าง — ค่ายังอยู่ในตารางและ tooltip
+    rows[r].push([x1, x1 + w]);
+    parts.push(`<text class="${l.bold ? "lbl-b" : "lbl"}" x="${x1}" y="${yRow[r]}">${esc(l.text)}</text>`);
+    parts.push(`<rect class="hit" x="${x1 - 4}" y="${yRow[r] - 14}" width="${w + 8}" height="20" data-tipv="${esc(l.tipv)}" data-tip="${esc(l.tip)}" aria-label="${esc(l.tipv)}"/>`);
+  });
+
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="แผนที่ระดับราคาของ ${CUR}">${parts.join("")}</svg>`;
+}
+
+function levelTable(d) {
+  const o = d.options || {}, P = d.spot, rows = [];
+  const add = (name, x, note) => { if (x != null) rows.push([name, x, note]); };
+  add("รั้วบน (call หนาสุด)", o.call_wall, o.call_wall_oi != null ? `OI ${fmt(o.call_wall_oi, 1)} ${CUR}` : "");
+  if (o.pin_zone) { add("โซนแม่เหล็ก — ขอบบน", o.pin_zone[1], ""); add("โซนแม่เหล็ก — ขอบล่าง", o.pin_zone[0], ""); }
+  add("max pain", o.max_pain, "");
+  if (o.sd1_range) { add("ช่วงที่ตลาดคาด — ขอบบน", o.sd1_range[1], ""); add("ช่วงที่ตลาดคาด — ขอบล่าง", o.sd1_range[0], ""); }
+  add("รั้วล่าง (put หนาสุด)", o.put_wall, o.put_wall_oi != null ? `OI ${fmt(o.put_wall_oi, 1)} ${CUR}` : "");
+  rows.sort((a, b) => b[1] - a[1]);
+  return `<details><summary>ดูเป็นตาราง</summary><div class="tbl"><table>
+    <thead><tr><th>ระดับ</th><th>ราคา</th><th>ห่างจากราคาตอนนี้</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${esc(r[0])}${r[2] ? `<div class="muted">${esc(r[2])}</div>` : ""}</td><td class="n">${fv(r[1])}</td><td class="n">${pctFrom(P, r[1])}</td></tr>`).join("")}</tbody>
+  </table></div></details>`;
+}
+
+// ---------- คำถาม 1: เอียงไปทางไหน ----------
+function waffle(n, title, sub, now) {
+  const cells = Array.from({length: 100}, (_, i) => `<i class="${i < n ? "on" : ""}"></i>`).join("");
+  return `<div class="waffle ${now ? "now" : ""}" role="img" aria-label="${esc(title)}: ${n} จาก 100 ครั้ง">
+    <div class="g">${cells}</div><div class="cap"><b>${n}</b> / 100 · ${esc(title)}<br>${esc(sub)}</div></div>`;
+}
+function biasBlock(d) {
+  const b = d.bias;
+  const head = `<h2>🧭 ตอนนี้ตลาดเอียงไปทางไหน?</h2><p class="sub">ใช้เฉพาะข้อที่มีสถิติย้อนหลังรองรับเท่านั้น</p>`;
+  if (!b) return head + `<p>ข้อมูลส่วนนี้จะขึ้นหลังตัวคำนวณรันรอบถัดไป</p>`;
+  const p = b.proven, bk = d.funding && BUCKET[d.funding.bucket];
+  if (!p) return head + `<div class="ans">➖ ยังบอกไม่ได้</div>
+    <p>ตอนนี้ไม่มีสัญญาณไหนที่ผ่านการพิสูจน์ด้วยสถิติ — เราจะไม่เดาทิศทางให้</p>
+    <p class="muted">funding ของ ${CUR} อยู่กลุ่ม "${esc(bk || "—")}" ซึ่งในอดีตผลไม่คงที่เมื่อแบ่งข้อมูลครึ่งแรก/ครึ่งหลังมาทดสอบ</p>`;
+  const now = Math.round(p.up8h), base = Math.round(p.base), other = p.dir === "down" ? now : 100 - now;
+  return head + `<div class="ans">${p.dir === "down" ? "🔻 เอียงลง" : "🔺 เอียงขึ้น"} <small>ช่วง 8 ชม.ข้างหน้า</small></div>
+    <div class="waffles">${waffle(base, "ช่วงปกติ", "ทุกช่วงเวลา")}${waffle(now, "ช่วงนี้", `funding "${bk || "—"}"`, true)}</div>
+    <p>ช่องเข้ม = ครั้งที่ราคา<b>ปิดสูงขึ้น</b>ใน 8 ชม.ถัดไป · ปกติ ${base} จาก 100 ครั้ง แต่ช่วงที่ funding อยู่ระดับนี้เหลือ <b>${now}</b> ครั้ง</p>
+    <p class="muted"><span class="badge">✅ มีสถิติรองรับ</span> ${p.n} ครั้ง · ${esc(p.window)} · เอียง ≠ แน่นอน: ยังมี ${other} ใน 100 ครั้งที่ออกอีกทาง</p>`;
+}
+
+// ---------- คำถาม 2: วันนี้วิ่งไปเท่าไหร่ ----------
+function rangeBlock(d) {
+  const v = d.vol || {}, atr = v.atr14_prev ?? v.atr14;
+  const head = `<h2>📐 วันนี้ราคาวิ่งไปแล้วเท่าไหร่?</h2><p class="sub">เทียบกับระยะที่ราคาแกว่งได้ในวันปกติ (ATR 14 วัน) · วันใหม่เริ่ม 07:00 น.</p>`;
+  if (!atr) return head + `<p>ยังไม่มีข้อมูล</p>`;
+  const pctl = v.atr_percentile_1y;
+  const yearNote = pctl == null ? "" : `<p class="muted">ช่วงนี้ตลาดแกว่ง${pctl >= 70 ? "แรงกว่า" : pctl <= 30 ? "เบากว่า" : "ระดับ"}ปกติของปี (เปอร์เซ็นไทล์ ${fmt(pctl, 0)} จาก 100) <span class="badge">✅ คำนวณจากราคาจริง 1 ปี</span></p>`;
+  if (v.day_high == null || v.day_low == null) return head + `<p>ระยะแกว่งปกติต่อวัน ≈ <b>${fv(atr)}</b></p>` + yearNote;
+  const range = v.day_high - v.day_low, used = range / atr * 100;
+  const s = used >= 100 ? ["crit", "⛔", "วิ่งครบระยะปกติแล้ว — ต่อจากนี้คือวิ่งเกินวันปกติ"]
+          : used >= 70 ? ["warn", "⚠️", "ใกล้ครบระยะปกติ — เหลือที่ให้วิ่งไม่มาก"]
+          : ["", "🟦", "ยังเหลือระยะให้วิ่งอีกพอสมควร"];
+  return head + `<div class="meter ${s[0]}" role="img" aria-label="ใช้ไป ${fmt(used, 0)}%"><i style="width:${Math.min(used, 100)}%"></i></div>
+    <div class="state"><span>${s[1]}</span><span>${fmt(used, 0)}% · ${s[2]}</span></div>
+    <p>วันนี้แกว่งแล้ว <b>${fv(range)}</b> (ต่ำสุด ${fv(v.day_low)} → สูงสุด ${fv(v.day_high)}) จากระยะปกติ <b>${fv(atr)}</b></p>` + yearNote;
+}
+
+// ---------- คำถาม 3: คนในตลาดร้อนแค่ไหน ----------
+function heatBlock(d) {
+  const f = d.funding;
+  const head = `<h2>🌡️ คนเล่น futures ร้อนแรงแค่ไหน?</h2><p class="sub">funding = ค่าที่ฝั่ง long จ่ายให้ฝั่ง short ทุก 8 ชม. · ยิ่งสูง = คนแห่ long มาก เทียบกับตัวเองย้อน 30 วัน</p>`;
+  if (!f || f.percentile == null) return head + `<p>ยังไม่มีข้อมูล</p>`;
+  const p = Math.max(0, Math.min(100, f.percentile));
+  const cols = ["--cold", "--cool", "--mid", "--warm", "--hot"], names = ["เย็นจัด", "เย็น", "กลางๆ", "อุ่น", "ร้อนจัด"];
+  return head + `<div class="heat" role="img" aria-label="funding อยู่เปอร์เซ็นไทล์ ${fmt(p, 0)} กลุ่ม ${esc(BUCKET[f.bucket] || "")}">
+      <div class="mk" style="left:${p}%">ตอนนี้ ${fmt(p, 0)}</div>
+      <div class="segs">${cols.map(c => `<i style="background:var(${c})"></i>`).join("")}</div>
+      <div class="names">${names.map(n => `<span>${n}</span>`).join("")}</div>
+    </div>
+    <p>รอบนี้ ${fmt(f.rate_pct, 4)}% ต่อ 8 ชม. → อยู่กลุ่ม <b>${esc(BUCKET[f.bucket] || "—")}</b> ของ 30 วันที่ผ่านมา</p>
+    <p class="muted">ตัวเลขนี้เป็นข้อเท็จจริง · จะกลายเป็นสัญญาณทิศทางเฉพาะกลุ่มที่ผ่านการทดสอบแล้ว (ดูหัวข้อ "เอียงไปทางไหน")</p>`;
+}
+
+// ---------- 24 ชม. ----------
+function trendPoints() {
+  const now = new Date(DATA.generated_at_utc).getTime();
+  return (HIST || []).filter(h => h && h.symbols && h.symbols[CUR])
+    .map(h => ({t: new Date(h.generated_at_utc).getTime(), p: h.symbols[CUR].spot,
+                mp: h.symbols[CUR].options && h.symbols[CUR].options.max_pain,
+                pz: h.symbols[CUR].options && h.symbols[CUR].options.pin_zone}))
+    .filter(x => now - x.t <= 26 * 36e5 && x.t <= now + 60e3)
+    .sort((a, b) => a.t - b.t);
+}
+function drawTrend() {
+  const box = $("#trend"), pts = trendPoints();
+  if (pts.length < 2) { box.innerHTML = `<p class="muted">ยังมีข้อมูลย้อนหลังไม่พอวาดกราฟ — ตัวเก็บเพิ่งเริ่มทำงาน</p>`; return; }
+  const W = Math.max(300, box.clientWidth), H = 200, ml = 8, mr = 8, mt = 12, mb = 26, lw = 58;
+  const vals = pts.flatMap(x => [x.p, x.mp, ...(x.pz || [])]).filter(v => v != null);
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * 0.08 || lo * 0.005; lo -= pad; hi += pad;
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+  const X = t => ml + lw + (t - t0) / (t1 - t0 || 1) * (W - ml - lw - mr);
+  const Y = v => mt + (hi - v) / (hi - lo) * (H - mt - mb);
+  const g = [];
+  const step = niceStep(hi - lo, 4);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    g.push(`<line x1="${ml + lw}" x2="${W - mr}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/>`);
+    g.push(`<text class="axis-t" x="${ml + lw - 6}" y="${Y(v) + 4}" text-anchor="end">${fmt(v, 0)}</text>`);
+  }
+  // โซนแม่เหล็กตามเวลา (แบบขั้นบันได)
+  const pzPts = pts.filter(x => x.pz);
+  if (pzPts.length >= 2) {
+    const top = [], bot = [];
+    pzPts.forEach((x, i) => { const xn = i < pzPts.length - 1 ? X(pzPts[i + 1].t) : X(x.t); top.push(`${X(x.t)},${Y(x.pz[1])} ${xn},${Y(x.pz[1])}`); bot.unshift(`${xn},${Y(x.pz[0])} ${X(x.t)},${Y(x.pz[0])}`); });
+    g.push(`<polygon points="${top.join(" ")} ${bot.join(" ")}" fill="color-mix(in oklab, var(--s3) 18%, transparent)"/>`);
+  }
+  const path = (key, stepMode) => pts.filter(x => x[key] != null).map((x, i, a) => {
+    if (!stepMode || i === 0) return `${i ? "L" : "M"}${X(x.t)},${Y(x[key])}`;
+    return `L${X(x.t)},${Y(a[i - 1][key])} L${X(x.t)},${Y(x[key])}`;
+  }).join(" ");
+  g.push(`<path d="${path("mp", true)}" fill="none" stroke="var(--s2)" stroke-width="2" stroke-linejoin="round"/>`);
+  g.push(`<path d="${path("p")}" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+  const last = pts[pts.length - 1];
+  g.push(`<circle cx="${X(last.t)}" cy="${Y(last.p)}" r="4" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>`);
+  if (last.mp != null) g.push(`<circle cx="${X(last.t)}" cy="${Y(last.mp)}" r="4" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>`);
+  // เวลาแกน x: ต้น · กลาง · ท้าย
+  [t0, (t0 + t1) / 2, t1].forEach((t, i) => g.push(`<text class="axis-t" x="${X(t)}" y="${H - 6}" text-anchor="${["start", "middle", "end"][i]}">${esc(thTime(new Date(t).toISOString(), false))}</text>`));
+  g.push(`<line id="xh" x1="0" x2="0" y1="${mt}" y2="${H - mb}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/>`);
+  g.push(`<rect id="xhit" x="${ml + lw}" y="${mt}" width="${W - ml - lw - mr}" height="${H - mt - mb}" fill="transparent" tabindex="0" aria-label="เลื่อนดูค่ารายช่วงเวลา"/>`);
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="ราคาเทียบ max pain 24 ชม.">${g.join("")}</svg>
+    <div class="legend"><span><i class="sw line" style="background:var(--ink)"></i>ราคา</span><span><i class="sw line" style="background:var(--s2)"></i>max pain</span><span><i class="sw" style="background:color-mix(in oklab,var(--s3) 30%,transparent)"></i>โซนแม่เหล็ก</span></div>`;
+
+  // crosshair หา "ช่วงเวลาที่ใกล้ที่สุด" — ผู้ใช้ไม่ต้องจิ้มโดนเส้น
+  const hit = $("#xhit"), xh = $("#xh"), svg = box.querySelector("svg"), tip = $("#tip");
+  let idx = pts.length - 1;
+  const show = (i, cx, cy) => {
+    idx = i; const x = pts[i];
+    xh.setAttribute("x1", X(x.t)); xh.setAttribute("x2", X(x.t)); xh.setAttribute("visibility", "visible");
+    tip.textContent = "";
+    const b = document.createElement("b"); b.textContent = fmt(x.p, dp()); tip.append(b);
+    [["ราคา", thTime(new Date(x.t).toISOString()) + " น."], ["max pain", fv(x.mp)], ["โซนแม่เหล็ก", x.pz ? fv(x.pz[0]) + "–" + fv(x.pz[1]) : "—"]]
+      .forEach(([k, v]) => { const r = document.createElement("div"); r.textContent = k + " · " + v; tip.append(r); });
+    tip.hidden = false; placeTip(cx, cy);
+  };
+  const nearest = e => {
+    const r = svg.getBoundingClientRect(), sx = (e.clientX - r.left) * (W / r.width);
+    let best = 0; pts.forEach((x, i) => { if (Math.abs(X(x.t) - sx) < Math.abs(X(pts[best].t) - sx)) best = i; });
+    return best;
+  };
+  hit.addEventListener("pointermove", e => show(nearest(e), e.clientX, e.clientY));
+  hit.addEventListener("pointerdown", e => show(nearest(e), e.clientX, e.clientY));
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; xh.setAttribute("visibility", "hidden"); });
+  hit.addEventListener("focus", () => { const r = svg.getBoundingClientRect(); show(idx, r.left + r.width / 2, r.top + 20); });
+  hit.addEventListener("blur", () => { tip.hidden = true; xh.setAttribute("visibility", "hidden"); });
+  hit.addEventListener("keydown", e => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault(); const i = Math.max(0, Math.min(pts.length - 1, idx + (e.key === "ArrowRight" ? 1 : -1)));
+    const r = svg.getBoundingClientRect(); show(i, r.left + X(pts[i].t) * r.width / W, r.top + 20);
+  });
+}
+function trendTable() {
+  const pts = trendPoints();
+  if (pts.length < 2) return "";
+  return `<details><summary>ดูเป็นตาราง</summary><div class="tbl"><table>
+    <thead><tr><th>เวลา</th><th>ราคา</th><th>max pain</th><th>โซนแม่เหล็ก</th></tr></thead>
+    <tbody>${pts.slice().reverse().map(x => `<tr><td>${esc(thTime(new Date(x.t).toISOString()))}</td><td class="n">${fmt(x.p, dp())}</td><td class="n">${fv(x.mp)}</td><td class="n">${x.pz ? fv(x.pz[0]) + "–" + fv(x.pz[1]) : "—"}</td></tr>`).join("")}</tbody>
+  </table></div></details>`;
+}
+
+// ---------- คำศัพท์ ----------
+function glossary() {
+  const items = [
+    ["🧱 รั้ว (กำแพงออปชัน)", "ราคาที่มีสัญญาออปชันค้างมากที่สุด ฝั่งบน (call) และฝั่งล่าง (put) · ราคามักชะลอเมื่อเข้าใกล้ ถ้าทะลุอาจเร่งตัว"],
+    ["🧲 โซนแม่เหล็ก", "ช่วงราคาที่ออปชันกองหนาแน่น คนดูแลความเสี่ยงต้องซื้อ-ขายสวนราคา ทำให้ราคามักถูกดึงไว้ในช่วงนี้"],
+    ["🎯 max pain", "ราคาที่ถ้าปิดตรงนั้นตอนหมดอายุ คนถือออปชันขาดทุนรวมมากสุด · ใกล้เวลาหมดอายุราคามักถูกดึงเข้าหา"],
+    ["📏 ช่วงที่ตลาดคาด (1SD)", "คำนวณจากราคาออปชัน ว่าตลาดคิดว่าราคาจะแกว่งแค่ไหนจนถึงวันหมดอายุ · ตามทฤษฎีจบในช่วงนี้ราว 2 ใน 3"],
+    ["🌡️ funding", "ค่าธรรมเนียมที่ฝั่ง long กับ short จ่ายกันทุก 8 ชม. · สูง = คนแห่ long · ต่ำหรือติดลบ = คนแห่ short"],
+    ["📐 ATR", "ค่าเฉลี่ยว่าราคาแกว่งวันละเท่าไหร่ (14 วัน) · ใช้ดูว่าวันนี้วิ่งไปมากหรือน้อยแล้ว"],
+  ];
+  return `<section class="card"><h2>📚 คำศัพท์ 6 คำที่ใช้ในหน้านี้</h2>
+    <p class="sub">ป้าย <span class="badge">✅ มีสถิติรองรับ</span> = ทดสอบกับข้อมูลย้อนหลังแล้ว · ข้ออื่นเป็นข้อเท็จจริงของตลาด ยังไม่รู้ว่าแม่นแค่ไหน</p>
+    <div class="gloss">${items.map(([t, s]) => `<div><b>${t}</b><span class="muted">${s}</span></div>`).join("")}</div></section>`;
+}
+
+// ---------- tooltip ของแผนที่สนาม ----------
+function placeTip(cx, cy) {
+  const tip = $("#tip");
+  tip.style.left = Math.min(Math.max(8, cx - tip.offsetWidth / 2), innerWidth - tip.offsetWidth - 8) + "px";
+  tip.style.top = (cy - tip.offsetHeight - 14 < 8 ? cy + 18 : cy - tip.offsetHeight - 14) + "px";
+}
+function bindTips(root) {
+  const tip = $("#tip");
+  root.querySelectorAll("[data-tip]").forEach(el => {
+    el.setAttribute("tabindex", "0");
+    const show = e => {
+      tip.textContent = "";
+      const b = document.createElement("b"); b.textContent = el.dataset.tipv || ""; tip.append(b);
+      const s = document.createElement("div"); s.textContent = el.dataset.tip; tip.append(s);
+      tip.hidden = false;
+      const r = el.getBoundingClientRect();
+      placeTip(e && e.clientX ? e.clientX : r.left + r.width / 2, e && e.clientY ? e.clientY : r.top);
+    };
+    el.addEventListener("pointerenter", show);
+    el.addEventListener("pointerdown", show);
+    el.addEventListener("pointerleave", () => { tip.hidden = true; });
+    el.addEventListener("focus", () => show());
+    el.addEventListener("blur", () => { tip.hidden = true; });
+  });
+}
+document.addEventListener("scroll", () => { $("#tip").hidden = true; }, {passive: true});
+
+let RZ = null;
+addEventListener("resize", () => { clearTimeout(RZ); RZ = setTimeout(() => { if (DATA) { drawField(DATA.symbols[CUR]); drawTrend(); bindTips($("#field")); } }, 150); });
+load();
+setInterval(load, 10 * 60 * 1000);
+</script>
+</body>
+</html>
