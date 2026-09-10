@@ -1,0 +1,43 @@
+name: collect
+
+# เก็บ snapshot ตลาดทุก 2 ชม. — เวลาใน cron เป็น UTC
+# 0,2,4,...,22 UTC = 07:05, 09:05, ... 05:05 เวลาไทย
+# ครอบรอบ funding ของ OKX (00/08/16 UTC = 07/15/23 น. ไทย) ครบทุกรอบ
+on:
+  schedule:
+    - cron: "5 */2 * * *"
+  workflow_dispatch:        # ปุ่มยิงเองสำหรับทดสอบ
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # เอามาแค่สคริปต์ ไม่แตะโฟลเดอร์ raw/ ที่โตขึ้นทุกวัน
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            collect.py
+            push_github.py
+          sparse-checkout-cone-mode: false
+
+      - name: ดึงข้อมูลดิบ
+        env:
+          OUT_DIR: ${{ runner.temp }}/out
+        run: python3 collect.py
+
+      - name: ส่งเข้า repo
+        env:
+          OUT_DIR: ${{ runner.temp }}/out
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: python3 push_github.py
