@@ -165,8 +165,15 @@ def option_metrics(oi_raw, sum_raw, spot, now):
     if not by_exp:
         return None
 
-    ex = sorted(by_exp, key=lambda e: by_exp[e]["dt"])[0]
+    # ข้ามสัญญาที่เหลืออายุไม่ถึง 3 ชม. — แรงตรึงของมันกำลังจะหายไปภายในไม่กี่นาที
+    # ถ้าใช้ตัวนั้น หน้าเว็บจะบอกว่า "ถูกตรึง" จากออปชันที่ใกล้หมดอายุ (เจอจริงตอน verify 10 ก.ย.)
+    MIN_HOURS = 3
+    ordered = sorted(by_exp, key=lambda e: by_exp[e]["dt"])
+    live = [e for e in ordered if (by_exp[e]["dt"] - now).total_seconds() / 3600.0 >= MIN_HOURS]
+    ex = (live or ordered)[0]
     blk = by_exp[ex]
+    # สัญญาที่อายุใกล้ 30 วันที่สุด — ใช้เป็น IV30 สำหรับเทียบกับความผันผวนจริง 30 วัน
+    ex30 = min(ordered, key=lambda e: abs((by_exp[e]["dt"] - now).total_seconds() / 86400.0 - 30))
     C, P = blk["C"], blk["P"]
     strikes = sorted(set(list(C.keys()) + list(P.keys())))
 
@@ -227,6 +234,22 @@ def option_metrics(oi_raw, sum_raw, spot, now):
         if calls and puts:
             rr25 = round((min(calls)[1] - min(puts)[1]) * 100, 2)
 
+    # IV30 — IV ที่ราคาปัจจุบันของสัญญาอายุใกล้ 30 วัน (ตัวที่เทียบกับความผันผวนจริง 30 วันได้อย่างยุติธรรม)
+    iv30 = None
+    c30 = []
+    for inst, g in greeks.items():
+        p = parse_inst(inst)
+        if not p or p[0] != ex30:
+            continue
+        try:
+            iv = float(g.get("markVol") or 0)
+        except (TypeError, ValueError):
+            continue
+        if iv > 0:
+            c30.append((abs(p[1] - spot), iv))
+    if c30:
+        iv30 = round(min(c30)[1] * 100, 1)
+
     hours_left = (blk["dt"] - now).total_seconds() / 3600.0
     sd1 = None
     if atm_iv and hours_left > 0:
@@ -242,6 +265,8 @@ def option_metrics(oi_raw, sum_raw, spot, now):
         "put_wall": put_wall,
         "pin_zone": pin_zone,
         "atm_iv": atm_iv,
+        "iv30": iv30,
+        "iv30_expiry": ex30,
         "rr25": rr25,
         "sd1_move": round(sd1, 1) if sd1 else None,
         "sd1_range": [round(spot - sd1, 1), round(spot + sd1, 1)] if sd1 else None,
@@ -324,10 +349,10 @@ def build_checks(sym, spot, opt, fund, rv, prev):
         diff = (bk.get("up8h") - base) if (bk.get("up8h") is not None and base) else None
         means = "ยังไม่พบว่าสภาพ funding แบบนี้บอกทิศทางอะไรได้ในข้อมูลที่มี"
         if proven and diff is not None:
-            direction = "ขึ้น" if diff > 0 else "ลง"
-            means = ("ในอดีต funding แบบนี้ ราคา 8 ชม.ถัดไป%s %s%% (ปกติ %s%%) — ต่างจากปกติ %s จุด "
-                     "และผลนี้ยืนได้ทั้งครึ่งแรกและครึ่งหลังของตัวอย่าง"
-                     % (direction, bk["up8h"], base, round(abs(diff), 1)))
+            lean = "ขึ้น" if diff > 0 else "ลง"
+            means = ("ในอดีตเมื่อ funding อยู่ระดับนี้ ราคาปิดสูงขึ้นใน 8 ชม.ถัดไป %s%% ของครั้ง (ปกติ %s%%) "
+                     "→ เอียงไปทาง%sบ่อยกว่าปกติ %s จุด · ผลนี้ยืนได้ทั้งครึ่งแรกและครึ่งหลังของตัวอย่าง"
+                     % (bk["up8h"], base, lean, round(abs(diff), 1)))
         checks.append({
             "key": "funding",
             "title": "ต้นทุนถือสถานะ (funding) เทียบตัวเองย้อน 30 วัน",
@@ -344,13 +369,13 @@ def build_checks(sym, spot, opt, fund, rv, prev):
         })
 
     # 4. ออปชันถูกหรือแพงเทียบความผันผวนที่เกิดขึ้นจริง
-    if opt and opt.get("atm_iv") and rv.get("rv30"):
-        gap = round(opt["atm_iv"] - rv["rv30"], 1)
+    if opt and opt.get("iv30") and rv.get("rv30"):
+        gap = round(opt["iv30"] - rv["rv30"], 1)
         checks.append({
             "key": "iv_vs_rv",
-            "title": "ออปชันถูกหรือแพง (IV เทียบความผันผวนจริง 30 วัน)",
-            "fact": "IV %s%% vs ผันผวนจริง %s%% → %s %s จุด" % (
-                opt["atm_iv"], rv["rv30"], "แพงกว่า" if gap > 0 else "ถูกกว่า", abs(gap)),
+            "title": "ออปชันถูกหรือแพง (IV สัญญาอายุ ~30 วัน เทียบความผันผวนจริง 30 วัน)",
+            "fact": "IV30 %s%% (สัญญา %s) vs ผันผวนจริง %s%% → %s %s จุด" % (
+                opt["iv30"], opt.get("iv30_expiry"), rv["rv30"], "แพงกว่า" if gap > 0 else "ถูกกว่า", abs(gap)),
             "state": "expensive" if gap > 0 else "cheap",
             "means": ("ออปชันแพงกว่าความผันผวนที่เกิดจริง — ฝั่งขายออปชันได้เปรียบเชิงสถิติ"
                       if gap > 0 else
