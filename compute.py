@@ -18,6 +18,7 @@ import math
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -442,12 +443,29 @@ def decide_mode(sym, spot, opt, checks):
 
 
 def load_history():
-    """ดึงประวัติค่าที่คำนวณแล้วจาก repo (ถ้ามี) เพื่อทำเส้นเวลาและ delta"""
-    url = "https://raw.githubusercontent.com/%s/main/web/history.json" % REPO
+    """ดึงประวัติค่าที่คำนวณแล้วจาก repo เพื่อทำเส้นเวลาและ delta
+
+    คืน [] ถ้ายังไม่มีไฟล์ (รอบแรก) · คืน None ถ้าดึงพลาดด้วยเหตุอื่น → main จะไม่เขียนทับประวัติรอบนั้น
+    (เดิมพลาดแล้วคืน [] = เขียนทับประวัติทั้งหมดเหลือจุดเดียว · เจอตอน verify 10 ก.ย.)
+    ใช้ API แทน raw.githubusercontent เพราะตัวหลังมีแคช ~5 นาที
+    """
+    url = "https://api.github.com/repos/%s/contents/web/history.json?ref=main" % REPO
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/vnd.github.raw"})
+    tok = os.environ.get("GITHUB_TOKEN")
+    if tok:
+        req.add_header("Authorization", "Bearer %s" % tok)
     try:
-        return fetch_json(url, timeout=20)
-    except Exception:
-        return []
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return data if isinstance(data, list) else None
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return []
+        print("โหลด history ไม่ได้ (HTTP %s) — รอบนี้จะไม่เขียนทับประวัติ" % e.code, file=sys.stderr)
+        return None
+    except Exception as e:
+        print("โหลด history ไม่ได้ (%s) — รอบนี้จะไม่เขียนทับประวัติ" % e, file=sys.stderr)
+        return None
 
 
 def main():
@@ -456,7 +474,8 @@ def main():
     print("snapshot: %s" % snap)
 
     history = load_history()
-    if not isinstance(history, list):
+    history_ok = history is not None
+    if not history_ok:
         history = []
 
     out = {"generated_at_utc": now.isoformat(), "snapshot": snap.name, "symbols": {}}
@@ -545,7 +564,8 @@ def main():
     webdir = OUT_DIR / "web"
     webdir.mkdir(parents=True, exist_ok=True)
     (webdir / "latest.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    (webdir / "history.json").write_text(json.dumps(history, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    if history_ok:
+        (webdir / "history.json").write_text(json.dumps(history, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print("เขียน web/latest.json (%d เหรียญ) · history %d จุด" % (len(out["symbols"]), len(history)))
     return 0 if out["symbols"] else 1
 
