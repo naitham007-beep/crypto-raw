@@ -158,6 +158,27 @@ const DATA_OVERRIDE = new URLSearchParams(location.search).get("data");
 const API_URL = "https://api.github.com/repos/" + REPO + "/contents/web/latest.json?ref=main";
 const RAW_URL = "https://raw.githubusercontent.com/" + REPO + "/main/web/latest.json";
 
+// ระดับออปชันจาก Worker ทุก 15 นาที (ขั้น ② · 11 ก.ย.) — ใหม่กว่ารอบ 2 ชม. ของ compute.py ก็ใช้แทน
+// ยกเว้นกรอบ 1SD (ยึดรอบ 2 ชม. — คำนวณใหม่ถี่ๆ กรอบจะวิ่งตามราคา) · ดึงไม่ได้ = ใช้ของเดิมเงียบๆ
+const WORKER_LEVELS = "https://crypto-raw-waker.korntrade.workers.dev/levels";
+async function mergeWorkerLevels(D) {
+  if (DATA_OVERRIDE) return;
+  try {
+    const r = await fetch(WORKER_LEVELS, {cache: "no-store"});
+    if (!r.ok) return;
+    const lv = await r.json(), ghAt = Date.parse(D.generated_at_utc);
+    let newest = 0;
+    for (const s of Object.keys(D.symbols || {})) {
+      const f = lv.symbols && lv.symbols[s], at = f ? Date.parse(f.at) : 0;
+      if (!f || !f.options || !(at > ghAt) || Date.now() - at > 2 * 36e5) continue;
+      const {sd1_move, sd1_range, ...rest} = f.options;
+      D.symbols[s].options = {...(D.symbols[s].options || {}), ...rest};
+      newest = Math.max(newest, at);
+    }
+    if (newest) D.__levelsAt = new Date(newest).toISOString();
+  } catch (e) { /* ใช้ระดับจากรอบ 2 ชม. */ }
+}
+
 async function fetchData() {
   const bust = u => u + (u.includes("?") ? "&" : "?") + "t=" + Date.now();
   if (DATA_OVERRIDE) {
@@ -194,7 +215,9 @@ try { CUR = localStorage.getItem("coin") || "BTC"; } catch (e) {}
 
 async function load() {
   try {
-    DATA = await fetchData();
+    const fresh = await fetchData();
+    await mergeWorkerLevels(fresh);
+    DATA = fresh;
     // กำลังพิมพ์ราคาอยู่ → ไม่วาดหน้าใหม่ทับ (ช่องกรอกจะหลุดโฟกัส) · รอบถัดไปค่อยวาด
     if (!DATA_LOADED_ONCE || document.activeElement?.id !== "px") render();
     DATA_LOADED_ONCE = true;
@@ -513,7 +536,7 @@ document.addEventListener("visibilitychange", () => document.hidden ? stopLive()
 function liveBadge() {
   const el = $("#live");
   if (!el || !DATA) return;
-  const ageMin = Math.max(0, Math.round((Date.now() - new Date(DATA.generated_at_utc)) / 60000));
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(DATA.__levelsAt || DATA.generated_at_utc)) / 60000));
   el.className = "live " + (liveOk() ? "on" : "off");
   el.textContent = liveOk()
     ? `ราคาสดจาก Binance · อัพเดทล่าสุด ${new Date(LIVE.at).toLocaleTimeString("th-TH", {timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit"})} (ทุก 3 วินาที) · ระดับออปชัน / bias / โหมด คำนวณเมื่อ ${ageMin} นาทีก่อน`
