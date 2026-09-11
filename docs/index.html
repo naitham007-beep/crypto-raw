@@ -354,8 +354,9 @@ const fv = v => fmt(v, Number.isInteger(+v) ? 0 : (CUR === "BTC" ? 0 : 1));
 // โซนตรึงเหลือ strike เดียว → pin_band = ± ครึ่งระยะถึง strike ข้างเคียง ใช้เช็ก "อยู่ในโซน" · ข้อมูลเก่าไม่มี pin_band = ใช้ pin_zone
 const pinBand = o => o.pin_band || o.pin_zone;
 const pinOne = o => !!o.pin_zone && o.pin_zone[0] === o.pin_zone[1];
-const pinHalf = o => (o.pin_band && pinOne(o)) ? o.pin_band[1] - o.pin_zone[0] : 0;
-const pinText = o => pinOne(o) ? fv(o.pin_zone[0]) + (pinHalf(o) > 0 ? ` ±${fv(pinHalf(o))}` : "") : `${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`;
+// band = โซน ± ครึ่งช่อง (แบบตาราง) → โชว์ "±" ต่อท้ายทั้งจุดเดียวและโซน เพราะ "อยู่ในโซน" นับถึงขอบ band
+const pinHalf = o => o.pin_band && o.pin_zone ? Math.max(0, o.pin_zone[0] - o.pin_band[0]) : 0;
+const pinText = o => (pinOne(o) ? fv(o.pin_zone[0]) : `${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`) + (pinHalf(o) > 0 ? ` ±${fv(pinHalf(o))}` : "");
 
 function levels(d) {
   const o = d.options || {}, v = d.vol || {}, L = [];

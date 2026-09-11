@@ -26,7 +26,7 @@ from pathlib import Path
 OUT_DIR = Path(os.environ.get("OUT_DIR", "out"))
 REPO = os.environ.get("GITHUB_REPOSITORY", "korntrade/crypto-raw")
 HISTORY_KEEP_DAYS = 120
-# โซนตรึง: ขยายจาก strike ที่ gamma×OI สูงสุดไปทีละ strike ที่ติดกัน ตราบที่ยัง ≥ สัดส่วนนี้ของจุดสูงสุด
+# โซนตรึง: ขยายจากช่องราคาที่ gamma×OI สูงสุดไปทีละช่องที่ติดกัน ตราบที่ยัง ≥ สัดส่วนนี้ของช่องสูงสุด (ดู grid_pin)
 # ต้องตรงกับ PIN_KEEP ใน fallback_cloudflare/worker.js (Worker คำนวณชุดเดียวกันทุก 15 นาที)
 PIN_KEEP = 0.5
 UA = "crypto-raw-compute/1.0"
@@ -128,6 +128,39 @@ BUCKET_TH = {"hot": "ร้อนจัด (สูงสุด 20% ของ 30 
 
 # ---------- คำนวณฝั่งออปชัน ----------
 
+def grid_pin(gex, strikes):
+    """โซนตรึงแบบตาราง → (pin_zone, pin_band) · ต้องตรงกับ gridPin() ใน fallback_cloudflare/worker.js
+    strike ไม่สม่ำเสมอ (11 ก.ย. ETH 2,440/2,450/2,460/2,475/2,480) → strike แทรกที่แรงน้อยขวางการขยายโซน
+    → รวม gex ลงช่องราคาห่างเท่ากัน (ช่วงห่างที่พบบ่อยสุด · เสมอกันเอาช่วงเล็ก · กึ่งกลางพอดีปัดขึ้น)
+    → ขยายจากช่องที่แรงสุดไปทีละช่อง ตราบที่ยัง ≥ PIN_KEEP ของช่องสูงสุด (ช่องว่าง = 0 → หยุด) · band = โซน ± ครึ่งช่อง"""
+    gaps = {}
+    for a, b in zip(strikes, strikes[1:]):
+        g = round(b - a, 8)
+        if g > 0:
+            gaps[g] = gaps.get(g, 0) + 1
+    # ตารางเริ่มนับจาก strike ที่แรงสุด (เสมอกันเอาตัวต่ำ) ไม่ใช่จาก 0 — strike ที่ไม่ลงตัวกับช่วงห่าง (2,435/2,460/2,485)
+    # ถ้านับจาก 0 ขอบโซนจะเลื่อนไปเป็นราคาที่ไม่มี strike จริง (เจอใน harness 11 ก.ย.)
+    top_k = max(gex.values())
+    anchor = min(k for k, v in gex.items() if v == top_k)
+    if not gaps:
+        return [anchor, anchor], [anchor, anchor]
+    step = min(gaps, key=lambda g: (-gaps[g], g))
+    cells = {}
+    for k, v in gex.items():
+        i = int(math.floor((k - anchor) / step + 0.5))
+        cells[i] = cells.get(i, 0.0) + v
+    top = max(cells.values())
+    peak = min(i for i, v in cells.items() if v == top)
+    thr = top * PIN_KEEP
+    lo = hi = peak
+    while cells.get(lo - 1, 0.0) >= thr:
+        lo -= 1
+    while cells.get(hi + 1, 0.0) >= thr:
+        hi += 1
+    zone = [anchor + lo * step, anchor + hi * step]
+    return zone, [zone[0] - step / 2.0, zone[1] + step / 2.0]
+
+
 def option_metrics(oi_raw, sum_raw, spot, now):
     """คืน dict ของ expiry ที่ใกล้ที่สุดที่ยังไม่หมดอายุ: max pain · กำแพง · โซนตรึง · IV · กรอบ 1SD · 25ΔRR"""
     if not oi_raw or not sum_raw:
@@ -221,8 +254,9 @@ def option_metrics(oi_raw, sum_raw, spot, now):
     # เดิม = min–max ของ 3 strike อันดับแรก → 11 ก.ย. 2026 เจออันดับ 3 เป็น 88,000 (+14% จากราคา)
     # โซนกว้าง 12,000 จุดใช้ไม่ได้ และอันดับ 3 สลับได้ในไม่กี่นาที
     # ใหม่ = เริ่มที่จุดสูงสุด ขยายไปทีละ strike ที่ติดกัน (strike ไม่มี gex = 0 → กระโดดข้ามช่องว่างไม่ได้)
-    pin_zone = pin_band = None
+    pin_zone = pin_band = pin_zone_raw = None
     if gex:
+        # แบบดิบ (ขยายบน strike จริง) — ไม่ใช้แสดงผล เก็บคู่ไว้วัดผลเทียบกับแบบตาราง 4–8 สัปดาห์ (ผู้ใช้เคาะ 11 ก.ย.)
         peak = max(gex, key=gex.get)
         thr = gex[peak] * PIN_KEEP
         lo = hi = strikes.index(peak)
@@ -230,15 +264,9 @@ def option_metrics(oi_raw, sum_raw, spot, now):
             lo -= 1
         while hi + 1 < len(strikes) and gex.get(strikes[hi + 1], 0.0) >= thr:
             hi += 1
-        pin_zone = [strikes[lo], strikes[hi]]
-        # pin_band = ช่วงที่นับว่า "อยู่ในโซน" · เหลือ strike เดียว → ± ครึ่งระยะถึง strike ข้างที่ใกล้สุด
-        # (11 ก.ย. ETH ได้ 2,475–2,475 → ราคาต้องเท่ากับ 2,475 พอดีถึงจะนับว่าอยู่ในโซน + แจ้งเตือนเด้งทุกครั้งที่ข้ามเส้น)
-        if lo == hi:
-            gaps = ([strikes[lo] - strikes[lo - 1]] if lo > 0 else []) + ([strikes[hi + 1] - strikes[hi]] if hi + 1 < len(strikes) else [])
-            half = min(gaps) / 2.0 if gaps else 0.0
-            pin_band = [strikes[lo] - half, strikes[lo] + half]
-        else:
-            pin_band = list(pin_zone)
+        pin_zone_raw = [strikes[lo], strikes[hi]]
+        # ตัวหลัก = แบบตาราง · pin_band = ช่วงที่นับว่า "อยู่ในโซน" (โซน ± ครึ่งช่อง)
+        pin_zone, pin_band = grid_pin(gex, strikes)
 
     # IV ที่ราคาปัจจุบัน (ATM) + กรอบ 1SD ถึงวันหมดอายุ
     atm_iv, rr25 = None, None
@@ -305,6 +333,7 @@ def option_metrics(oi_raw, sum_raw, spot, now):
         "put_wall_oi": put_wall_oi,
         "pin_zone": pin_zone,
         "pin_band": pin_band,
+        "pin_zone_raw": pin_zone_raw,
         "atm_iv": atm_iv,
         "iv30": iv30,
         "iv30_expiry": ex30,
@@ -379,10 +408,11 @@ def build_checks(sym, spot, opt, fund, rv, prev):
     # 1. ราคาอยู่ตรงไหนเทียบโซนตรึง
     if opt and opt.get("pin_zone"):
         zl, zh = opt["pin_zone"]
-        lo, hi = opt.get("pin_band") or opt["pin_zone"]   # strike เดียว = ช่วง ± ครึ่งระยะ strike
+        lo, hi = opt.get("pin_band") or opt["pin_zone"]   # band = โซน ± ครึ่งช่อง
         inside = lo <= spot <= hi
-        zone_txt = ("จุดตรึง %s (±%s)" % (f"{zl:,.0f}", f"{hi - zl:,.1f}".rstrip("0").rstrip(".")) if zl == zh
-                    else "โซนตรึง %s–%s" % (f"{zl:,.0f}", f"{zh:,.0f}"))
+        half = zl - lo
+        zone_txt = ("จุดตรึง %s" % f"{zl:,.0f}" if zl == zh else "โซนตรึง %s–%s" % (f"{zl:,.0f}", f"{zh:,.0f}")) \
+            + (" (±%s)" % f"{half:,.1f}".rstrip("0").rstrip(".") if half > 0 else "")
         checks.append({
             "key": "pin_zone",
             "title": "ราคาเทียบโซนที่ออปชันตรึงไว้",
@@ -675,7 +705,7 @@ def main():
         slim["symbols"][sym] = {
             "spot": d["spot"],
             "funding": {k: d["funding"][k] for k in ("rate_pct", "percentile", "oi_usd")} if d["funding"] else None,
-            "options": {k: (d["options"] or {}).get(k) for k in ("max_pain", "atm_iv", "pin_zone", "pin_band", "oi_coins", "expiry")} if d["options"] else None,
+            "options": {k: (d["options"] or {}).get(k) for k in ("max_pain", "atm_iv", "pin_zone", "pin_band", "pin_zone_raw", "oi_coins", "expiry")} if d["options"] else None,
             "vol": {"rv30": d["vol"].get("rv30"), "atr_pct": d["vol"].get("atr_pct")},
         }
     history.append(slim)
