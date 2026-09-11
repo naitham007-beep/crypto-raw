@@ -78,6 +78,12 @@ footer a{color:var(--accent)}
 .live.on::before{background:var(--green);animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}
 @media (prefers-reduced-motion: reduce){.live.on::before{animation:none}}
+[data-px]{border-radius:6px;padding:0 3px}
+@keyframes flashUp{0%{background:color-mix(in oklab,var(--green) 30%,transparent)}100%{background:transparent}}
+@keyframes flashDn{0%{background:color-mix(in oklab,var(--red) 30%,transparent)}100%{background:transparent}}
+.flash-up{animation:flashUp 1.2s ease-out}
+.flash-dn{animation:flashDn 1.2s ease-out}
+@media (prefers-reduced-motion: reduce){.flash-up,.flash-dn{animation:none}}
 /* ⓪ bias + แผนที่ราคา */
 .bias{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--gray);border-radius:14px;padding:14px 16px}
 .bias.b-up{border-left-color:var(--green)} .bias.b-dn{border-left-color:var(--red)}
@@ -212,7 +218,7 @@ function render() {
     const d = DATA.symbols[s];
     const ch = liveChg(s) ?? d.change_24h;
     return `<button class="tab" role="tab" aria-selected="${s === CUR}" data-s="${s}">
-      ${s} <span data-px="${s}">${fmt(spotOf(d, s), s === "BTC" ? 0 : 1)}</span>
+      ${s} <span data-px="${s}" data-v="${spotOf(d, s)}">${fmt(spotOf(d, s), 2)}</span>
       <small>${d.mode.icon} ${esc(d.mode.mode)} · <span data-chg="${s}" class="${ch >= 0 ? "up" : "dn"}">${ch >= 0 ? "+" : ""}${fmt(ch, 2)}% 24ชม.</span></small>
     </button>`;
   }).join("");
@@ -510,13 +516,22 @@ function liveBadge() {
   const ageMin = Math.max(0, Math.round((Date.now() - new Date(DATA.generated_at_utc)) / 60000));
   el.className = "live " + (liveOk() ? "on" : "off");
   el.textContent = liveOk()
-    ? `ราคาสดจาก Binance ทุก 3 วินาที · ระดับออปชัน / bias / โหมด คำนวณเมื่อ ${ageMin} นาทีก่อน`
+    ? `ราคาสดจาก Binance · อัพเดทล่าสุด ${new Date(LIVE.at).toLocaleTimeString("th-TH", {timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit"})} (ทุก 3 วินาที) · ระดับออปชัน / bias / โหมด คำนวณเมื่อ ${ageMin} นาทีก่อน`
     : `ราคาสดใช้ไม่ได้ตอนนี้ — แสดงราคา ณ รอบคำนวณ (${ageMin} นาทีก่อน)`;
 }
 function onLive() {
+  // ทศนิยม 2 ตำแหน่ง + กะพริบเขียว/แดงเมื่อราคาเปลี่ยน — ตลาดเงียบขยับทีละเซนต์ จำนวนเต็มจะดูเหมือนค้าง (MD ทัก 11 ก.ย.)
   document.querySelectorAll("[data-px]").forEach(el => {
     const s = el.dataset.px, d = DATA.symbols[s];
-    if (d) el.textContent = fmt(spotOf(d, s), s === "BTC" ? 0 : 1);
+    if (!d) return;
+    const p = spotOf(d, s), prev = parseFloat(el.dataset.v);
+    el.textContent = fmt(p, 2);
+    el.dataset.v = p;
+    if (liveOk() && isFinite(prev) && p !== prev) {
+      el.classList.remove("flash-up", "flash-dn");
+      void el.offsetWidth;   // รีสตาร์ทแอนิเมชัน
+      el.classList.add(p > prev ? "flash-up" : "flash-dn");
+    }
   });
   document.querySelectorAll("[data-chg]").forEach(el => {
     const s = el.dataset.chg, d = DATA.symbols[s];

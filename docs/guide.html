@@ -121,6 +121,13 @@ footer a,.link{color:var(--s1)}
 .live.on::before{background:var(--good);animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}
 @media (prefers-reduced-motion: reduce){.live.on::before{animation:none}}
+.hero .big .cents{font-size:.5em;font-weight:600;color:var(--ink2)}
+.hero .big{display:inline-block;border-radius:10px;padding:0 6px;margin-left:-6px}
+@keyframes flashUp{0%{background:color-mix(in oklab,var(--up) 28%,transparent)}100%{background:transparent}}
+@keyframes flashDn{0%{background:color-mix(in oklab,var(--dn) 28%,transparent)}100%{background:transparent}}
+.flash-up{animation:flashUp 1.2s ease-out}
+.flash-dn{animation:flashDn 1.2s ease-out}
+@media (prefers-reduced-motion: reduce){.flash-up,.flash-dn{animation:none}}
 </style>
 </head>
 <body>
@@ -154,6 +161,13 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const fmt = (v, d = 0) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("th-TH", {maximumFractionDigits: d, minimumFractionDigits: d});
 const thTime = (iso, withDay = true) => new Date(iso).toLocaleString("th-TH", Object.assign({timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit"}, withDay ? {day: "numeric", month: "short"} : {}));
 let DATA = null, HIST = [], CUR = "BTC";
+const LASTP = {};   // ราคาที่แสดงรอบก่อน แยกรายเหรียญ — ใช้ตัดสินว่าจะกะพริบเขียว/แดง
+const thSec = t => new Date(t).toLocaleTimeString("th-TH", {timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+// ราคาใหญ่: ทศนิยม 2 ตำแหน่งแบบกระดานเทรด (ตลาดเงียบขยับทีละเซนต์ — จำนวนเต็มจะดูเหมือนค้าง · MD ทัก 11 ก.ย.)
+function bigPrice(P) {
+  const s = fmt(P, 2), i = s.lastIndexOf(".");
+  return i < 0 ? esc(s) : `${esc(s.slice(0, i))}<span class="cents">${esc(s.slice(i))}</span>`;
+}
 try { CUR = localStorage.getItem("coin") || "BTC"; } catch (e) {}
 const dp = () => CUR === "BTC" ? 0 : 1;
 const fv = v => fmt(v, Number.isInteger(+v) ? 0 : dp());   // strike กลมไม่โชว์ .0
@@ -233,6 +247,9 @@ function render() {
 // ---------- ส่วนหัว: ตัวเลขเดียว + สรุปภาษาคน ----------
 function hero(d) {
   const o = d.options || {}, P = spotOf(d, CUR), ch = liveChg(CUR) ?? d.change_24h, lines = [];
+  const prev = LASTP[CUR];
+  const flash = liveOk() && prev != null && P !== prev ? (P > prev ? "flash-up" : "flash-dn") : "";
+  LASTP[CUR] = P;
   const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "";
   if (o.pin_zone) {
     const [lo, hi] = o.pin_zone;
@@ -246,7 +263,7 @@ function hero(d) {
   else if (d.bias) lines.push(["➖", "ตอนนี้<b>ยังไม่มีสัญญาณทิศทางที่มีสถิติรองรับ</b> — หน้านี้จะไม่เดาทิศให้"]);
   return `<section class="card hero">
     <div class="coin">${CUR} · ${liveOk() ? "ราคาสด" : "ราคา ณ รอบคำนวณ"}</div>
-    <div class="big">${fmt(P, dp())}</div>
+    <div class="big ${flash}">${bigPrice(P)}</div>
     ${ch != null ? `<div class="chg ${ch >= 0 ? "up" : "dn"}">${ch >= 0 ? "▲ +" : "▼ "}${fmt(ch, 2)}% ใน 24 ชม.</div>` : ""}
     <ul class="story">${lines.map(l => `<li><span>${l[0]}</span><span>${l[1]}</span></li>`).join("")}</ul>
   </section>`;
@@ -584,7 +601,7 @@ function liveBadge() {
   const ageMin = Math.max(0, Math.round((Date.now() - new Date(DATA.generated_at_utc)) / 60000));
   el.className = "live " + (liveOk() ? "on" : "off");
   el.textContent = liveOk()
-    ? `ราคาสดจาก Binance ทุก 3 วินาที · ระดับออปชันและสถิติคำนวณเมื่อ ${ageMin} นาทีก่อน`
+    ? `ราคาสดจาก Binance · อัพเดทล่าสุด ${thSec(LIVE.at)} (ทุก 3 วินาที) · ระดับออปชันและสถิติคำนวณเมื่อ ${ageMin} นาทีก่อน`
     : `ราคาสดใช้ไม่ได้ตอนนี้ — แสดงราคา ณ รอบคำนวณ (${ageMin} นาทีก่อน)`;
 }
 function onLive() {
