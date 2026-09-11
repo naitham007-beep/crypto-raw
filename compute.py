@@ -195,23 +195,29 @@ def option_metrics(oi_raw, sum_raw, spot, now):
 
     # โซนตรึง — ช่วง strike ที่ gamma x OI หนาแน่นที่สุด (แรงที่ดูดราคาไว้)
     # จับคู่ด้วย (strike, ชนิด) ไม่ประกอบรหัสสัญญาเอง — กันพังเวลารูปแบบรหัสเปลี่ยน
+    # ใช้ gammaBS ไม่ใช้ gamma — OKX ส่ง 2 ตลาดปนกัน (BTC-USD เหรียญ / BTC-USD_UM USDT)
+    # "gamma" ฝั่งเหรียญเป็นหน่วยปรับราคา (~16) ฝั่ง UM เป็นหน่วย BS (~0.0002) → ปนกันแล้วจัดอันดับเพี้ยน
+    # (11 ก.ย. 88,000 put gamma 2.38 แต่ gammaBS 0.0000013 → ขึ้นเป็นจุดสูงสุดทั้งที่ไกล +14%)
+    # 1 ค่าต่อ (strike, ชนิด): เอาแถวฝั่งเหรียญก่อน ไม่มีค่อยใช้ UM — ต้องตรงกับ worker.js
     gamma_by = {}
     for inst, g in greeks.items():
         p = parse_inst(inst)
         if not p or p[0] != ex:
             continue
         try:
-            gv = float(g.get("gamma") or 0)
+            gv = abs(float(g.get("gammaBS") or 0))
         except (TypeError, ValueError):
             continue
-        if gv:
-            gamma_by.setdefault((p[1], p[2]), gv)
+        um = "_UM" in inst.split("-")[1]
+        key = (p[1], p[2])
+        if gv and (key not in gamma_by or (gamma_by[key][1] and not um)):
+            gamma_by[key] = (gv, um)
     gex = {}
     for t, book in (("C", C), ("P", P)):
         for k, v in book.items():
             g = gamma_by.get((k, t))
             if g:
-                gex[k] = gex.get(k, 0.0) + abs(g) * v
+                gex[k] = gex.get(k, 0.0) + g[0] * v
     # เดิม = min–max ของ 3 strike อันดับแรก → 11 ก.ย. 2026 เจออันดับ 3 เป็น 88,000 (+14% จากราคา)
     # โซนกว้าง 12,000 จุดใช้ไม่ได้ และอันดับ 3 สลับได้ในไม่กี่นาที
     # ใหม่ = เริ่มที่จุดสูงสุด ขยายไปทีละ strike ที่ติดกัน (strike ไม่มี gex = 0 → กระโดดข้ามช่องว่างไม่ได้)
