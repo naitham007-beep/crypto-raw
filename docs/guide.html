@@ -255,7 +255,7 @@ function render() {
       ${levelTable(d)}
     </section>
     <section class="card">${biasBlock(d)}</section>
-    <section class="card">${rangeBlock(d)}</section>
+    <section class="card" id="range">${rangeBlock(d)}</section>
     <section class="card">${heatBlock(d)}</section>
     <section class="card">
       <h2>🕒 24 ชม.ที่ผ่านมา — ราคาวิ่งเข้าหา max pain ไหม</h2>
@@ -442,19 +442,19 @@ function biasBlock(d) {
 
 // ---------- คำถาม 2: วันนี้วิ่งไปเท่าไหร่ ----------
 function rangeBlock(d) {
-  const v = d.vol || {}, atr = v.atr14_prev ?? v.atr14;
+  const v = d.vol || {}, dy = dayOf(d, CUR), atr = dy.atr;
   const head = `<h2>📐 วันนี้ราคาวิ่งไปแล้วเท่าไหร่?</h2><p class="sub">เทียบกับระยะที่ราคาแกว่งได้ในวันปกติ (ATR 14 วัน) · วันใหม่เริ่ม 07:00 น.</p>`;
   if (!atr) return head + `<p>ยังไม่มีข้อมูล</p>`;
   const pctl = v.atr_percentile_1y;
   const yearNote = pctl == null ? "" : `<p class="muted">ช่วงนี้ตลาดแกว่ง${pctl >= 70 ? "แรงกว่า" : pctl <= 30 ? "เบากว่า" : "ระดับ"}ปกติของปี (เปอร์เซ็นไทล์ ${fmt(pctl, 0)} จาก 100) <span class="badge">✅ คำนวณจากราคาจริง 1 ปี</span></p>`;
-  if (v.day_high == null || v.day_low == null) return head + `<p>ระยะแกว่งปกติต่อวัน ≈ <b>${fv(atr)}</b></p>` + yearNote;
-  const range = v.day_high - v.day_low, used = range / atr * 100;
+  if (dy.h == null || dy.l == null) return head + `<p>ระยะแกว่งปกติต่อวัน ≈ <b>${fv(atr)}</b></p>` + yearNote;
+  const range = dy.h - dy.l, used = range / atr * 100;
   const s = used >= 100 ? ["crit", "⛔", "วิ่งครบระยะปกติแล้ว — ต่อจากนี้คือวิ่งเกินวันปกติ"]
           : used >= 70 ? ["warn", "⚠️", "ใกล้ครบระยะปกติ — เหลือที่ให้วิ่งไม่มาก"]
           : ["", "🟦", "ยังเหลือระยะให้วิ่งอีกพอสมควร"];
   return head + `<div class="meter ${s[0]}" role="img" aria-label="ใช้ไป ${fmt(used, 0)}%"><i style="width:${Math.min(used, 100)}%"></i></div>
     <div class="state"><span>${s[1]}</span><span>${fmt(used, 0)}% · ${s[2]}</span></div>
-    <p>วันนี้แกว่งแล้ว <b>${fv(range)}</b> (ต่ำสุด ${fv(v.day_low)} → สูงสุด ${fv(v.day_high)}) จากระยะปกติ <b>${fv(atr)}</b></p>` + yearNote;
+    <p>วันนี้แกว่งแล้ว <b>${fv(range)}</b> (ต่ำสุด ${fv(dy.l)} → สูงสุด ${fv(dy.h)}) จากระยะปกติ <b>${fv(atr)}</b>${dy.live ? "" : ` <span class="muted">· ค่าจากรอบคำนวณ</span>`}</p>` + yearNote;
 }
 
 // ---------- คำถาม 3: คนในตลาดร้อนแค่ไหน ----------
@@ -604,11 +604,35 @@ document.addEventListener("scroll", () => { $("#tip").hidden = true; }, {passive
 // ระดับออปชัน / bias ยังมาจากรอบคำนวณทุก 2 ชม. — ราคาสดใช้บอกแค่ "ตอนนี้อยู่ตรงไหนของแผนที่"
 const LIVE = {px: {}, chg: {}, at: 0};
 const LIVE_URL = "https://data-api.binance.vision/api/v3/ticker/24hr?type=MINI&symbols=" + encodeURIComponent('["BTCUSDT","ETHUSDT"]');
+// แท่งวันปัจจุบัน (เริ่ม 00:00 UTC = 07:00 น. เหมือน compute.py) ทุก 1 นาที + ราคาสดทุก 3 วิ → สูง/ต่ำของวันแบบสด — ตรงกับหน้าหลัก
+const DAY = {tried: 0};
+async function pollDay() {
+  DAY.tried = Date.now();
+  await Promise.all(["BTC", "ETH"].map(async s => {
+    try {
+      const r = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${s}USDT&interval=1d&limit=1`, {cache: "no-store"});
+      const k = r.ok ? (await r.json())[0] : null;
+      if (k && +k[2] > 0 && +k[3] > 0) DAY[s] = {t: +k[0], h: +k[2], l: +k[3], at: Date.now()};
+    } catch (e) { /* ดึงไม่ได้ → ใช้ค่ารอบคำนวณ */ }
+  }));
+}
+// {h, l, atr, live} · แท่งสดอายุ > 3 นาที = ถอยไปใช้ค่ารอบคำนวณ
+function dayOf(d, s) {
+  const v = d.vol || {}, x = DAY[s];
+  if (x && Date.now() - x.at < 180000) {
+    const p = liveOk() && LIVE.px[s];
+    // ข้ามวันแล้วแต่รอบคำนวณยังเป็นของเมื่อวาน → atr14 ของรอบนั้นรวมแท่งเมื่อวานแล้ว = ใกล้ ATR ของวันใหม่กว่า atr14_prev
+    const newDay = new Date(x.t).toISOString().slice(0, 10) !== String(DATA.generated_at_utc).slice(0, 10);
+    return {h: p ? Math.max(x.h, p) : x.h, l: p ? Math.min(x.l, p) : x.l, atr: (newDay ? v.atr14 : v.atr14_prev) ?? v.atr14, live: true};
+  }
+  return {h: v.day_high, l: v.day_low, atr: v.atr14_prev ?? v.atr14, live: false};
+}
 let LIVE_T = null;
 function liveOk() { return Date.now() - LIVE.at < 30000; }
 function spotOf(d, s) { return (liveOk() && LIVE.px[s]) || d.spot; }
 function liveChg(s) { return liveOk() && LIVE.chg[s] != null ? LIVE.chg[s] : null; }
 async function pollLive() {
+  if (Date.now() - DAY.tried > 60000) pollDay();   // แท่งวันสด ทุก 1 นาที (ไม่รอ — รอบ 3 วิถัดไปค่อยใช้)
   try {
     const r = await fetch(LIVE_URL, {cache: "no-store"});
     if (r.ok) {
@@ -640,6 +664,7 @@ function onLive() {
   if (!DATA || !$("#hero")) return;
   const d = DATA.symbols[CUR];
   $("#hero").innerHTML = hero(d);
+  if ($("#range")) $("#range").innerHTML = rangeBlock(d);   // สูง/ต่ำของวันแบบสด
   // tooltip เปิดค้างอยู่ → ไม่วาดแผนที่ทับ (กันป้ายหายใต้นิ้ว) · รอบถัดไปค่อยวาด
   if ($("#tip").hidden) { drawField(d); bindTips($("#field")); }
   liveBadge();

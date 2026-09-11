@@ -370,15 +370,15 @@ function levels(d) {
     add(o.sd1_range[0], "sd1", "ขอบล่างกรอบ 1SD", `ตลาดออปชันตั้งราคาไว้ถึง ${exp}`, "c-blue", "ขอบล่าง 1SD");
   }
   add(o.put_wall, "wall", "กำแพงล่าง — put OI หนาสุด", o.put_wall_oi != null ? `OI ${fmt(o.put_wall_oi, 1)} ${CUR}` : "", "c-green", "กำแพง put");
-  const atr = v.atr14_prev ?? v.atr14;
+  const dy = dayOf(d, CUR), atr = dy.atr;
   if (atr) {
-    if (v.day_high != null && v.day_low != null) {
-      const used = (v.day_high - v.day_low) / atr * 100;
+    if (dy.h != null && dy.l != null) {
+      const used = (dy.h - dy.l) / atr * 100;
       // ช่วงแกว่งเต็มวัน: ต่ำสุดของวัน + ATR = สูงสุดที่ยังไปได้ถ้าวิ่งแค่ขนาดปกติ (กลับกันสำหรับพื้น)
       if (used < 100) {
-        const note = `ATR ${fmt(atr, dp)} · วันนี้ใช้ไป ${fmt(used, 0)}%`;
-        add(v.day_low + atr, "atr", "เพดานช่วงแกว่งเต็มวัน", "ต่ำสุดวันนี้ + " + note, "c-gray", "เพดาน ATR");
-        add(v.day_high - atr, "atr", "พื้นช่วงแกว่งเต็มวัน", "สูงสุดวันนี้ − " + note, "c-gray", "พื้น ATR");
+        const note = `ATR ${fmt(atr, dp)} · วันนี้ใช้ไป ${fmt(used, 0)}%${dy.live ? "" : " · ค่าจากรอบคำนวณ"}`;
+        add(dy.l + atr, "atr", "เพดานช่วงแกว่งเต็มวัน", "ต่ำสุดวันนี้ + " + note, "c-gray", "เพดาน ATR");
+        add(dy.h - atr, "atr", "พื้นช่วงแกว่งเต็มวัน", "สูงสุดวันนี้ − " + note, "c-gray", "พื้น ATR");
       }
     } else {
       add(d.spot + atr, "atr", "เพดานช่วงแกว่งเต็มวัน", `ราคาล่าสุด + ATR ${fmt(atr, dp)}`, "c-gray", "เพดาน ATR");
@@ -435,7 +435,7 @@ function renderMap() {
     ${rest.length ? `<div class="more">${rest.map(w => `${w.t ? "<b>" + esc(w.t) + "</b> · " : ""}${esc(w.s)}`).join("<br>")}</div>` : ""}
   </div>`;
 
-  const atr = v.atr14_prev ?? v.atr14;
+  const atr = dayOf(d, CUR).atr;
   const tol = atr ? atr * 0.25 : P * 0.004;
   const Z = zones(L, tol);
   const zin = Z.filter(z => P >= z.lo && P <= z.hi);
@@ -514,11 +514,36 @@ function summary(d) {
 // ระดับออปชัน / bias / โหมด ยังมาจากรอบคำนวณทุก 2 ชม. — ราคาสดใช้บอกแค่ "ตอนนี้อยู่ตรงไหนของแผนที่"
 const LIVE = {px: {}, chg: {}, at: 0};
 const LIVE_URL = "https://data-api.binance.vision/api/v3/ticker/24hr?type=MINI&symbols=" + encodeURIComponent('["BTCUSDT","ETHUSDT"]');
+// แท่งวันปัจจุบัน (เริ่ม 00:00 UTC = 07:00 น. เหมือน compute.py) ทุก 1 นาที + ราคาสดทุก 3 วิ → สูง/ต่ำของวันแบบสด
+// เดิมใช้ day_high/low ของรอบคำนวณ 2 ชม. → ราคาทำ high/low ใหม่ระหว่างรอบ เพดาน/พื้น ATR ไม่ขยับ (ผู้ใช้ขอ 11 ก.ย.)
+const DAY = {tried: 0};
+async function pollDay() {
+  DAY.tried = Date.now();
+  await Promise.all(["BTC", "ETH"].map(async s => {
+    try {
+      const r = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${s}USDT&interval=1d&limit=1`, {cache: "no-store"});
+      const k = r.ok ? (await r.json())[0] : null;
+      if (k && +k[2] > 0 && +k[3] > 0) DAY[s] = {t: +k[0], h: +k[2], l: +k[3], at: Date.now()};
+    } catch (e) { /* ดึงไม่ได้ → ใช้ค่ารอบคำนวณ */ }
+  }));
+}
+// {h, l, atr, live} · แท่งสดอายุ > 3 นาที = ถอยไปใช้ค่ารอบคำนวณ
+function dayOf(d, s) {
+  const v = d.vol || {}, x = DAY[s];
+  if (x && Date.now() - x.at < 180000) {
+    const p = liveOk() && LIVE.px[s];
+    // ข้ามวันแล้วแต่รอบคำนวณยังเป็นของเมื่อวาน → atr14 ของรอบนั้นรวมแท่งเมื่อวานแล้ว = ใกล้ ATR ของวันใหม่กว่า atr14_prev
+    const newDay = new Date(x.t).toISOString().slice(0, 10) !== String(DATA.generated_at_utc).slice(0, 10);
+    return {h: p ? Math.max(x.h, p) : x.h, l: p ? Math.min(x.l, p) : x.l, atr: (newDay ? v.atr14 : v.atr14_prev) ?? v.atr14, live: true};
+  }
+  return {h: v.day_high, l: v.day_low, atr: v.atr14_prev ?? v.atr14, live: false};
+}
 let LIVE_T = null;
 function liveOk() { return Date.now() - LIVE.at < 30000; }
 function spotOf(d, s) { return (liveOk() && LIVE.px[s]) || d.spot; }
 function liveChg(s) { return liveOk() && LIVE.chg[s] != null ? LIVE.chg[s] : null; }
 async function pollLive() {
+  if (Date.now() - DAY.tried > 60000) pollDay();   // แท่งวันสด ทุก 1 นาที (ไม่รอ — รอบ 3 วิถัดไปค่อยใช้)
   try {
     const r = await fetch(LIVE_URL, {cache: "no-store"});
     if (r.ok) {
