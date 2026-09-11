@@ -65,11 +65,12 @@ h2{font-size:16px;margin:0 0 2px}
 /* แผนที่สนาม */
 #field{width:100%;position:relative}
 #field svg{display:block;width:100%;height:auto;overflow:visible}
-.axis-t{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}
-.lbl{font-size:12px;fill:var(--ink2)}
-.lbl-b{font-size:12.5px;fill:var(--ink);font-weight:600}
+.axis-t{font-size:13px;fill:var(--muted);font-variant-numeric:tabular-nums}
+.lbl{font-size:14px;fill:var(--ink2)}
+.lbl-b{font-size:14.5px;fill:var(--ink);font-weight:600}
+.lbl-in{font-size:13px;fill:var(--ink2);font-weight:600;stroke:var(--surface);stroke-width:4px;stroke-linejoin:round;paint-order:stroke}
 .pill{fill:var(--ink)}
-.pill-t{font-size:12.5px;fill:var(--surface);font-weight:700}
+.pill-t{font-size:15px;fill:var(--surface);font-weight:700}
 .hit{fill:transparent;cursor:pointer;outline:none}
 .hit:focus-visible{stroke:var(--ink);stroke-width:1}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12.5px;color:var(--ink2)}
@@ -284,7 +285,8 @@ function pctFrom(P, x) { const g = (x - P) / P * 100; return (g >= 0 ? "+" : "")
 
 function drawField(d) {
   const box = $("#field"), o = d.options || {}, v = d.vol || {}, P = spotOf(d, CUR);
-  const W = Math.max(300, box.clientWidth), H = 184, ml = 12, mr = 12;
+  // ขนาดขยาย 11 ก.ย. (MD: "แผนที่สนามอ่านยาก อยากให้ใหญ่ขึ้น") — แถบสูง 70→120 · ตัวอักษร 11–12.5→13–15 · ป้ายใต้แกน 3 แถว
+  const W = Math.max(300, box.clientWidth), H = 280, ml = 12, mr = 12;
   const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "วันหมดอายุ";
   const sd = o.sd1_move || ((v.atr14_prev || v.atr14 || P * 0.02) / 2);
   const win = [P - 3.5 * sd, P + 3.5 * sd];          // รั้วที่ไกลเกินจะย้ายไปเป็นลูกศรที่ขอบ
@@ -295,8 +297,8 @@ function drawField(d) {
   let lo = Math.min(...pts), hi = Math.max(...pts);
   const pad = (hi - lo) * 0.07 || P * 0.005; lo -= pad; hi += pad;
   const X = x => ml + (x - lo) / (hi - lo) * (W - ml - mr);
-  const yTop = 34, yBot = 104, yMid = 69;
-  const parts = [];
+  const yTop = 44, yBot = 164, yMid = 104;
+  const parts = [], overlay = [];
 
   // แกน + ขีดตัวเลข (เส้นบางทึบ ไม่ใช่เส้นประ)
   parts.push(`<line x1="${ml}" x2="${W - mr}" y1="${yMid}" y2="${yMid}" stroke="var(--axis)" stroke-width="1"/>`);
@@ -304,22 +306,25 @@ function drawField(d) {
   for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) {
     const x = X(t);
     parts.push(`<line x1="${x}" x2="${x}" y1="${yBot + 8}" y2="${yBot + 12}" stroke="var(--axis)"/>`);
-    parts.push(`<text class="axis-t" x="${x}" y="${yBot + 25}" text-anchor="middle">${fmt(t, 0)}</text>`);
+    parts.push(`<text class="axis-t" x="${x}" y="${yBot + 30}" text-anchor="middle">${fmt(t, 0)}</text>`);
   }
 
   // แถบ 1SD และโซนแม่เหล็ก — สีจางๆ + ขอบบน 2px สีเดียวกัน (ไม่ขีดกรอบรอบ)
-  const band = (a, b, y, h, col, alpha, tip, tipv) => {
+  // inLabel = ชื่อเขียนในแถบเลย (ไม่ต้องเลื่อนไปดูคำอธิบายสี) — แถบแคบกว่าชื่อก็ไม่เขียน
+  const band = (a, b, y, h, col, alpha, tip, tipv, inLabel, labelY) => {
     const x1 = X(Math.max(a, lo)), x2 = X(Math.min(b, hi));
     parts.push(`<rect x="${x1}" y="${y}" width="${Math.max(2, x2 - x1)}" height="${h}" fill="color-mix(in oklab, var(${col}) ${alpha}%, transparent)"/>`);
-    parts.push(`<rect x="${x1}" y="${y}" width="${Math.max(2, x2 - x1)}" height="2" fill="var(${col})"/>`);
+    parts.push(`<rect x="${x1}" y="${y}" width="${Math.max(2, x2 - x1)}" height="3" fill="var(${col})"/>`);
+    // วาดทีหลังสุด (overlay) + ขอบสีพื้น — รั้ว/เส้นราคาตัดผ่านก็ยังอ่านออก (รอบแรกโดนแท่งรั้วทับกลางคำ)
+    if (inLabel && x2 - x1 > textW(inLabel, 13, 600) + 14) overlay.push(`<text class="lbl-in" x="${x1 + 7}" y="${labelY}">${esc(inLabel)}</text>`);
     parts.push(`<rect class="hit" x="${x1}" y="${y}" width="${Math.max(24, x2 - x1)}" height="${h}" data-tipv="${esc(tipv)}" data-tip="${esc(tip)}" aria-label="${esc(tipv)}"/>`);
   };
   if (o.sd1_range) band(o.sd1_range[0], o.sd1_range[1], yTop, yBot - yTop, "--s1", 12,
     `ช่วงที่ตลาดออปชันตั้งราคาไว้ถึง ${exp} · ตามทฤษฎีราคาจะจบในช่วงนี้ราว 2 ใน 3 ของโอกาส (เรายังไม่ได้วัดจริงว่าแม่นแค่ไหน)`,
-    `ช่วงที่ตลาดคาด ${fv(o.sd1_range[0])}–${fv(o.sd1_range[1])}`);
-  if (o.pin_zone) band(o.pin_zone[0], o.pin_zone[1], yTop + 14, yBot - yTop - 28, "--s3", 26,
+    `ช่วงที่ตลาดคาด ${fv(o.sd1_range[0])}–${fv(o.sd1_range[1])}`, "ช่วงที่ตลาดคาด", yTop + 19);
+  if (o.pin_zone) band(o.pin_zone[0], o.pin_zone[1], yTop + 26, yBot - yTop - 52, "--s3", 26,
     "ออปชันกองหนาแน่นช่วงนี้ คนดูแลความเสี่ยงต้องซื้อ-ขายสวนทางราคา ราคาจึงมักถูกดึงกลับเข้ามา (ยังไม่มีสถิติของเราเอง)",
-    `โซนแม่เหล็ก ${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`);
+    `โซนแม่เหล็ก ${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`, "🧲 โซนแม่เหล็ก", yBot - 26 - 9);
 
   // รั้ว — ถ้าอยู่ในกรอบวาดเป็นแท่ง ถ้าไกลเกินวาดเป็นลูกศรที่ขอบ
   const labels = [];   // {x, text, anchor}
@@ -329,7 +334,7 @@ function drawField(d) {
     const tip = `strike ที่มีสัญญา ${side === "C" ? "call" : "put"} ค้างมากที่สุด${oi != null ? ` (${fmt(oi, 1)} ${CUR})` : ""} · ถ้าราคาทะลุ คนขายออปชันต้องไล่ป้องกันความเสี่ยง ราคาอาจเร่งตัว`;
     if (inWin(x)) {
       const xx = X(x);
-      parts.push(`<rect x="${xx - 2}" y="${yTop}" width="4" height="${yBot - yTop}" rx="2" fill="var(--wall)"/>`);
+      parts.push(`<rect x="${xx - 3}" y="${yTop}" width="6" height="${yBot - yTop}" rx="3" fill="var(--wall)"/>`);
       parts.push(`<rect class="hit" x="${xx - 12}" y="${yTop}" width="24" height="${yBot - yTop}" data-tipv="${name} ${fv(x)}" data-tip="${esc(tip)}" aria-label="${name} ${fv(x)}"/>`);
       labels.push({x: xx, text: `${name} ${fv(x)}`, tipv: `${name} ${fv(x)}`, tip});
     } else {
@@ -343,35 +348,35 @@ function drawField(d) {
   // max pain — เพชรสีส้ม ขอบสีพื้น 2px
   if (o.max_pain != null && inWin(o.max_pain)) {
     const xx = X(o.max_pain);
-    parts.push(`<rect x="${xx - 6}" y="${yMid - 6}" width="12" height="12" transform="rotate(45 ${xx} ${yMid})" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>`);
+    parts.push(`<rect x="${xx - 8}" y="${yMid - 8}" width="16" height="16" transform="rotate(45 ${xx} ${yMid})" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"/>`);
     const tip = `ถ้าราคาปิดตรงนี้ตอนออปชันหมดอายุ (${exp}) คนถือออปชันรวมกันขาดทุนมากที่สุด · ใกล้หมดอายุราคามักถูกดึงเข้าหา (ยังไม่มีสถิติของเราเอง)`;
-    parts.push(`<circle class="hit" cx="${xx}" cy="${yMid}" r="14" data-tipv="max pain ${fv(o.max_pain)}" data-tip="${esc(tip)}" aria-label="max pain ${fv(o.max_pain)}"/>`);
+    parts.push(`<circle class="hit" cx="${xx}" cy="${yMid}" r="16" data-tipv="max pain ${fv(o.max_pain)}" data-tip="${esc(tip)}" aria-label="max pain ${fv(o.max_pain)}"/>`);
     labels.push({x: xx, text: `max pain ${fv(o.max_pain)}`, bold: true, tipv: `max pain ${fv(o.max_pain)}`, tip});
   }
 
   // ราคาตอนนี้ — เส้นเข้ม + ป้ายด้านบน
   const xp = X(P);
-  parts.push(`<line x1="${xp}" x2="${xp}" y1="${yTop - 8}" y2="${yBot + 6}" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/>`);
-  const pt = `ราคาตอนนี้ ${fmt(P, dp())}`, pw = textW(pt, 12.5, 700) + 16;
+  parts.push(`<line x1="${xp}" x2="${xp}" y1="${yTop - 10}" y2="${yBot + 8}" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>`);
+  const pt = `ราคาตอนนี้ ${fmt(P, dp())}`, pw = textW(pt, 15, 700) + 22;
   const px = Math.min(Math.max(xp - pw / 2, 0), W - pw);
-  parts.push(`<rect class="pill" x="${px}" y="2" width="${pw}" height="22" rx="11"/>`);
-  parts.push(`<text class="pill-t" x="${px + pw / 2}" y="17" text-anchor="middle">${esc(pt)}</text>`);
-  parts.push(`<rect class="hit" x="${xp - 12}" y="0" width="24" height="${yBot + 6}" data-tipv="${esc(pt)}" data-tip="${liveOk() ? "ราคาสดจาก Binance (อัพเดททุก 3 วินาที)" : "ราคา ณ รอบคำนวณ " + esc(thTime(DATA.generated_at_utc)) + " น."}" aria-label="${esc(pt)}"/>`);
+  parts.push(`<rect class="pill" x="${px}" y="2" width="${pw}" height="30" rx="15"/>`);
+  parts.push(`<text class="pill-t" x="${px + pw / 2}" y="22.5" text-anchor="middle">${esc(pt)}</text>`);
+  parts.push(`<rect class="hit" x="${xp - 12}" y="0" width="24" height="${yBot + 8}" data-tipv="${esc(pt)}" data-tip="${liveOk() ? "ราคาสดจาก Binance (อัพเดททุก 3 วินาที)" : "ราคา ณ รอบคำนวณ " + esc(thTime(DATA.generated_at_utc)) + " น."}" aria-label="${esc(pt)}"/>`);
 
   // ป้ายใต้แกน — วางแถวละไม่ชนกัน (วัดความกว้างจริงก่อนวาง)
-  const rows = [[], []], yRow = [yBot + 46, yBot + 64];
+  const rows = [[], [], []], yRow = [yBot + 56, yBot + 80, yBot + 104];
   labels.sort((a, b) => a.x - b.x).forEach(l => {
-    const w = textW(l.text, 12, l.bold ? 600 : 400);
+    const w = textW(l.text, l.bold ? 14.5 : 14, l.bold ? 600 : 400);
     let x1 = l.anchor === "end" ? l.x - w : l.anchor === "start" ? l.x : l.x - w / 2;
     x1 = Math.min(Math.max(x1, 0), W - w);
     const r = rows.findIndex(row => row.every(([a, b]) => x1 > b + 8 || x1 + w < a - 8));
     if (r < 0) return;   // ไม่มีที่ว่าง — ค่ายังอยู่ในตารางและ tooltip
     rows[r].push([x1, x1 + w]);
     parts.push(`<text class="${l.bold ? "lbl-b" : "lbl"}" x="${x1}" y="${yRow[r]}">${esc(l.text)}</text>`);
-    parts.push(`<rect class="hit" x="${x1 - 4}" y="${yRow[r] - 14}" width="${w + 8}" height="20" data-tipv="${esc(l.tipv)}" data-tip="${esc(l.tip)}" aria-label="${esc(l.tipv)}"/>`);
+    parts.push(`<rect class="hit" x="${x1 - 4}" y="${yRow[r] - 17}" width="${w + 8}" height="23" data-tipv="${esc(l.tipv)}" data-tip="${esc(l.tip)}" aria-label="${esc(l.tipv)}"/>`);
   });
 
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="แผนที่ระดับราคาของ ${CUR}">${parts.join("")}</svg>`;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="แผนที่ระดับราคาของ ${CUR}">${parts.join("")}${overlay.join("")}</svg>`;
 }
 
 function levelTable(d) {
