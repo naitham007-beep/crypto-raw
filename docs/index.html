@@ -69,6 +69,10 @@ footer a{color:var(--accent)}
 .err{background:var(--red-bg);color:var(--red);padding:14px;border-radius:12px}
 .note{font-size:12.5px;color:var(--mute);margin-top:6px}
 .ls{font-size:12px;color:var(--mute)}
+.guide-link{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:10px 14px;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600}
+.guide-link span{color:var(--accent)}
+.guide-link:hover{border-color:var(--accent)}
 /* ⓪ bias + แผนที่ราคา */
 .bias{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--gray);border-radius:14px;padding:14px 16px}
 .bias.b-up{border-left-color:var(--green)} .bias.b-dn{border-left-color:var(--red)}
@@ -117,6 +121,7 @@ footer a{color:var(--accent)}
     <h1>🧭 เข็มทิศออปชัน</h1>
     <div class="stamp" id="stamp">กำลังโหลด…</div>
   </header>
+  <a class="guide-link" href="guide.html">📖 มือใหม่? อ่านแบบเข้าใจง่าย <span>→</span></a>
   <div id="stale" class="stale" hidden></div>
   <div class="tabs" role="tablist" id="tabs"></div>
   <main id="main"></main>
