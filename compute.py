@@ -221,7 +221,7 @@ def option_metrics(oi_raw, sum_raw, spot, now):
     # เดิม = min–max ของ 3 strike อันดับแรก → 11 ก.ย. 2026 เจออันดับ 3 เป็น 88,000 (+14% จากราคา)
     # โซนกว้าง 12,000 จุดใช้ไม่ได้ และอันดับ 3 สลับได้ในไม่กี่นาที
     # ใหม่ = เริ่มที่จุดสูงสุด ขยายไปทีละ strike ที่ติดกัน (strike ไม่มี gex = 0 → กระโดดข้ามช่องว่างไม่ได้)
-    pin_zone = None
+    pin_zone = pin_band = None
     if gex:
         peak = max(gex, key=gex.get)
         thr = gex[peak] * PIN_KEEP
@@ -231,6 +231,14 @@ def option_metrics(oi_raw, sum_raw, spot, now):
         while hi + 1 < len(strikes) and gex.get(strikes[hi + 1], 0.0) >= thr:
             hi += 1
         pin_zone = [strikes[lo], strikes[hi]]
+        # pin_band = ช่วงที่นับว่า "อยู่ในโซน" · เหลือ strike เดียว → ± ครึ่งระยะถึง strike ข้างที่ใกล้สุด
+        # (11 ก.ย. ETH ได้ 2,475–2,475 → ราคาต้องเท่ากับ 2,475 พอดีถึงจะนับว่าอยู่ในโซน + แจ้งเตือนเด้งทุกครั้งที่ข้ามเส้น)
+        if lo == hi:
+            gaps = ([strikes[lo] - strikes[lo - 1]] if lo > 0 else []) + ([strikes[hi + 1] - strikes[hi]] if hi + 1 < len(strikes) else [])
+            half = min(gaps) / 2.0 if gaps else 0.0
+            pin_band = [strikes[lo] - half, strikes[lo] + half]
+        else:
+            pin_band = list(pin_zone)
 
     # IV ที่ราคาปัจจุบัน (ATM) + กรอบ 1SD ถึงวันหมดอายุ
     atm_iv, rr25 = None, None
@@ -296,6 +304,7 @@ def option_metrics(oi_raw, sum_raw, spot, now):
         "call_wall_oi": call_wall_oi,
         "put_wall_oi": put_wall_oi,
         "pin_zone": pin_zone,
+        "pin_band": pin_band,
         "atm_iv": atm_iv,
         "iv30": iv30,
         "iv30_expiry": ex30,
@@ -369,12 +378,15 @@ def build_checks(sym, spot, opt, fund, rv, prev):
 
     # 1. ราคาอยู่ตรงไหนเทียบโซนตรึง
     if opt and opt.get("pin_zone"):
-        lo, hi = opt["pin_zone"]
+        zl, zh = opt["pin_zone"]
+        lo, hi = opt.get("pin_band") or opt["pin_zone"]   # strike เดียว = ช่วง ± ครึ่งระยะ strike
         inside = lo <= spot <= hi
+        zone_txt = ("จุดตรึง %s (±%s)" % (f"{zl:,.0f}", f"{hi - zl:,.1f}".rstrip("0").rstrip(".")) if zl == zh
+                    else "โซนตรึง %s–%s" % (f"{zl:,.0f}", f"{zh:,.0f}"))
         checks.append({
             "key": "pin_zone",
             "title": "ราคาเทียบโซนที่ออปชันตรึงไว้",
-            "fact": "ราคา %s · โซนตรึง %s–%s" % (f"{spot:,.0f}", f"{lo:,.0f}", f"{hi:,.0f}"),
+            "fact": "ราคา %s · %s" % (f"{spot:,.0f}", zone_txt),
             "state": "in" if inside else ("above" if spot > hi else "below"),
             "means": ("อยู่ในโซน — แรงจากออปชันมักดึงราคากลับเข้ากลาง กว่าจะไปต่อต้องแรงกว่าปกติ"
                       if inside else "อยู่นอกโซน — แรงตรึงอ่อนลง ราคาวิ่งได้อิสระกว่า"),
@@ -663,7 +675,7 @@ def main():
         slim["symbols"][sym] = {
             "spot": d["spot"],
             "funding": {k: d["funding"][k] for k in ("rate_pct", "percentile", "oi_usd")} if d["funding"] else None,
-            "options": {k: (d["options"] or {}).get(k) for k in ("max_pain", "atm_iv", "pin_zone", "oi_coins", "expiry")} if d["options"] else None,
+            "options": {k: (d["options"] or {}).get(k) for k in ("max_pain", "atm_iv", "pin_zone", "pin_band", "oi_coins", "expiry")} if d["options"] else None,
             "vol": {"rv30": d["vol"].get("rv30"), "atr_pct": d["vol"].get("atr_pct")},
         }
     history.append(slim)

@@ -174,7 +174,7 @@ async function mergeWorkerLevels(D) {
       const {sd1_move, sd1_range, ...rest} = f.options;
       const base = D.symbols[s].options || {};
       // ชุดสัญญาต่างกัน (ช่วง 3 ชม.ก่อนหมดอายุ) → กรอบ 1SD ของชุดเก่าผูกกับวันหมดอายุคนละวัน ซ่อนไว้จนรอบ 2 ชม.ถัดไป
-      D.symbols[s].options = {...base, ...rest, ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null})};
+      D.symbols[s].options = {...base, ...rest, pin_band: rest.pin_band ?? null, ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null})};
       newest = Math.max(newest, at);
     }
     if (newest) D.__levelsAt = new Date(newest).toISOString();
@@ -278,7 +278,7 @@ function render() {
         <div class="do">▶ ${esc(d.mode.do)}</div>
         <div class="kv">
           <div><span>max pain</span><b>${fv(o.max_pain)}</b></div>
-          <div><span>โซนตรึง</span><b>${o.pin_zone ? fv(o.pin_zone[0]) + "–" + fv(o.pin_zone[1]) : "—"}</b></div>
+          <div><span>โซนตรึง</span><b>${o.pin_zone ? pinText(o) : "—"}</b></div>
           <div><span>กำแพง put / call</span><b>${fv(o.put_wall)} / ${fv(o.call_wall)}</b></div>
           <div><span>ออปชันชุดนี้หมดอายุ ${o.expiry_utc ? esc(thTime(o.expiry_utc)) + " น." : ""}</span><b>อีก ${fmt(o.hours_left, 1)} ชม.</b></div>
         </div>
@@ -351,6 +351,11 @@ function biasCard(d) {
 // ---------- ⓪ แผนที่ราคา ----------
 // ตัวเลขระดับราคา: strike ออปชันเป็นเลขกลม (2,450) ไม่ต้องโชว์ .0 · ค่าที่คำนวณได้ (EMA/ATR/1SD) โชว์ทศนิยมตามเหรียญ
 const fv = v => fmt(v, Number.isInteger(+v) ? 0 : (CUR === "BTC" ? 0 : 1));
+// โซนตรึงเหลือ strike เดียว → pin_band = ± ครึ่งระยะถึง strike ข้างเคียง ใช้เช็ก "อยู่ในโซน" · ข้อมูลเก่าไม่มี pin_band = ใช้ pin_zone
+const pinBand = o => o.pin_band || o.pin_zone;
+const pinOne = o => !!o.pin_zone && o.pin_zone[0] === o.pin_zone[1];
+const pinHalf = o => (o.pin_band && pinOne(o)) ? o.pin_band[1] - o.pin_zone[0] : 0;
+const pinText = o => pinOne(o) ? fv(o.pin_zone[0]) + (pinHalf(o) > 0 ? ` ±${fv(pinHalf(o))}` : "") : `${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`;
 
 function levels(d) {
   const o = d.options || {}, v = d.vol || {}, L = [];
@@ -361,7 +366,9 @@ function levels(d) {
   const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "หมดอายุ";
   add(o.call_wall, "wall", "กำแพงบน — call OI หนาสุด", o.call_wall_oi != null ? `OI ${fmt(o.call_wall_oi, 1)} ${CUR}` : "", "c-red", "กำแพง call");
   add(o.max_pain, "mp", "max pain", `ราคาที่คนถือออปชันเจ็บรวมมากสุด ณ ${exp}`, "c-amber", "max pain");
-  if (o.pin_zone) {
+  if (pinOne(o)) {
+    add(o.pin_zone[0], "pin", "จุดตรึง (GEX)", `strike เดียวที่แรงดูดหนาแน่น${pinHalf(o) > 0 ? ` · ห่างไม่เกิน ±${fv(pinHalf(o))} นับว่าอยู่ในโซน` : ""}`, "c-violet", "จุดตรึง");
+  } else if (o.pin_zone) {
     add(o.pin_zone[1], "pin", "ขอบบนโซนตรึง (GEX)", "ในโซนมักถูกดูดกลับเข้ากลาง", "c-violet", "ขอบบนโซนตรึง");
     add(o.pin_zone[0], "pin", "ขอบล่างโซนตรึง (GEX)", "หลุดโซน = แรงตรึงอ่อนลง", "c-violet", "ขอบล่างโซนตรึง");
   }
@@ -406,9 +413,9 @@ function zones(L, tol) {
 function where(d, P) {
   const o = d.options || {}, out = [];
   if (o.pin_zone) {
-    const [lo, hi] = o.pin_zone, rng = `${fv(lo)} – ${fv(hi)}`;
-    if (P >= lo && P <= hi) out.push({cls: "in", t: "🧲 อยู่ในโซนตรึง (GEX)", s: `${rng} · แรงออปชันมักดึงกลับเข้ากลาง — ไล่ราคาในโซนมักโดนดึงกลับ`});
-    else out.push({cls: "", t: P > hi ? "⬆ อยู่เหนือโซนตรึง" : "⬇ อยู่ใต้โซนตรึง", s: `โซน ${rng} · นอกโซนแรงตรึงอ่อนลง ราคาวิ่งได้อิสระกว่า`});
+    const [lo, hi] = pinBand(o), rng = pinText(o), nm = pinOne(o) ? "จุดตรึง" : "โซนตรึง";
+    if (P >= lo && P <= hi) out.push({cls: "in", t: `🧲 อยู่${pinOne(o) ? "ใกล้" : "ใน"}${nm} (GEX)`, s: `${rng} · แรงออปชันมักดึงกลับเข้ากลาง — ไล่ราคาในโซนมักโดนดึงกลับ`});
+    else out.push({cls: "", t: P > hi ? `⬆ อยู่เหนือ${nm}` : `⬇ อยู่ใต้${nm}`, s: `${nm} ${rng} · นอกโซนแรงตรึงอ่อนลง ราคาวิ่งได้อิสระกว่า`});
   }
   if (o.sd1_range && (P > o.sd1_range[1] || P < o.sd1_range[0]))
     out.push({t: "⚡ หลุดกรอบ 1SD", s: "เคลื่อนแรงกว่าที่ตลาดออปชันตั้งราคาไว้"});

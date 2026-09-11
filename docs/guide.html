@@ -204,7 +204,7 @@ async function mergeWorkerLevels(D) {
       const {sd1_move, sd1_range, ...rest} = f.options;
       const base = D.symbols[s].options || {};
       // ชุดสัญญาต่างกัน (ช่วง 3 ชม.ก่อนหมดอายุ) → กรอบ 1SD ของชุดเก่าผูกกับวันหมดอายุคนละวัน ซ่อนไว้จนรอบ 2 ชม.ถัดไป
-      D.symbols[s].options = {...base, ...rest, ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null})};
+      D.symbols[s].options = {...base, ...rest, pin_band: rest.pin_band ?? null, ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null})};
       newest = Math.max(newest, at);
     }
     if (newest) D.__levelsAt = new Date(newest).toISOString();
@@ -270,6 +270,13 @@ function render() {
   liveBadge();
 }
 
+// โซนแม่เหล็กเหลือ strike เดียว → pin_band = ± ครึ่งระยะถึง strike ข้างเคียง ใช้เช็ก "อยู่ในโซน" + วาดแถบ · ข้อมูลเก่าไม่มี pin_band = ใช้ pin_zone
+const pinBand = o => o.pin_band || o.pin_zone;
+const pinOne = o => !!o.pin_zone && o.pin_zone[0] === o.pin_zone[1];
+const pinHalf = o => (o.pin_band && pinOne(o)) ? o.pin_band[1] - o.pin_zone[0] : 0;
+const pinName = o => pinOne(o) ? "จุดแม่เหล็ก" : "โซนแม่เหล็ก";
+const pinText = o => pinOne(o) ? fv(o.pin_zone[0]) + (pinHalf(o) > 0 ? ` ±${fv(pinHalf(o))}` : "") : `${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`;
+
 // ---------- ส่วนหัว: ตัวเลขเดียว + สรุปภาษาคน ----------
 function hero(d) {
   const o = d.options || {}, P = spotOf(d, CUR), ch = liveChg(CUR) ?? d.change_24h, lines = [];
@@ -278,10 +285,10 @@ function hero(d) {
   LASTP[CUR] = P;
   const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "";
   if (o.pin_zone) {
-    const [lo, hi] = o.pin_zone;
+    const [lo, hi] = pinBand(o), nm = pinName(o);
     lines.push(P >= lo && P <= hi
-      ? ["🧲", `ราคาอยู่ใน<b>โซนแม่เหล็ก</b> (${fv(lo)}–${fv(hi)}) — ตรงนี้ราคามักถูกดึงไว้ ไม่ค่อยวิ่งไกล`]
-      : ["🧲", `ราคาอยู่<b>${P < lo ? "ต่ำกว่า" : "สูงกว่า"}โซนแม่เหล็ก</b> (${fv(lo)}–${fv(hi)}) — แรงดึงอ่อนลง ราคาวิ่งได้อิสระกว่า`]);
+      ? ["🧲", `ราคาอยู่${pinOne(o) ? "ใกล้" : "ใน"}<b>${nm}</b> (${pinText(o)}) — ตรงนี้ราคามักถูกดึงไว้ ไม่ค่อยวิ่งไกล`]
+      : ["🧲", `ราคาอยู่<b>${P < lo ? "ต่ำกว่า" : "สูงกว่า"}${nm}</b> (${pinText(o)}) — แรงดึงอ่อนลง ราคาวิ่งได้อิสระกว่า`]);
   }
   if (o.sd1_range) lines.push(["📏", `ตลาดออปชันคาดว่าถึง ${exp} ราคาน่าจะอยู่ในช่วง <b>${fv(o.sd1_range[0])}–${fv(o.sd1_range[1])}</b> (ตามทฤษฎีราว 2 ใน 3 ของโอกาส)`]);
   const p = d.bias && d.bias.proven;
@@ -317,7 +324,7 @@ function drawField(d) {
   const win = [P - 3.5 * sd, P + 3.5 * sd];          // รั้วที่ไกลเกินจะย้ายไปเป็นลูกศรที่ขอบ
   const inWin = x => x != null && x >= win[0] && x <= win[1];
   const pts = [P];
-  [o.sd1_range && o.sd1_range[0], o.sd1_range && o.sd1_range[1], o.pin_zone && o.pin_zone[0], o.pin_zone && o.pin_zone[1],
+  [o.sd1_range && o.sd1_range[0], o.sd1_range && o.sd1_range[1], o.pin_zone && pinBand(o)[0], o.pin_zone && pinBand(o)[1],
    o.max_pain, o.put_wall, o.call_wall].forEach(x => { if (inWin(x)) pts.push(x); });
   let lo = Math.min(...pts), hi = Math.max(...pts);
   const pad = (hi - lo) * 0.07 || P * 0.005; lo -= pad; hi += pad;
@@ -347,9 +354,10 @@ function drawField(d) {
   if (o.sd1_range) band(o.sd1_range[0], o.sd1_range[1], yTop, yBot - yTop, "--s1", 12,
     `ช่วงที่ตลาดออปชันตั้งราคาไว้ถึง ${exp} · ตามทฤษฎีราคาจะจบในช่วงนี้ราว 2 ใน 3 ของโอกาส (เรายังไม่ได้วัดจริงว่าแม่นแค่ไหน)`,
     `ช่วงที่ตลาดคาด ${fv(o.sd1_range[0])}–${fv(o.sd1_range[1])}`, "ช่วงที่ตลาดคาด", yTop + 19);
-  if (o.pin_zone) band(o.pin_zone[0], o.pin_zone[1], yTop + 26, yBot - yTop - 52, "--s3", 26,
-    "ออปชันกองหนาแน่นช่วงนี้ คนดูแลความเสี่ยงต้องซื้อ-ขายสวนทางราคา ราคาจึงมักถูกดึงกลับเข้ามา (ยังไม่มีสถิติของเราเอง)",
-    `โซนแม่เหล็ก ${fv(o.pin_zone[0])}–${fv(o.pin_zone[1])}`, "🧲 โซนแม่เหล็ก", yBot - 26 - 9);
+  if (o.pin_zone) band(pinBand(o)[0], pinBand(o)[1], yTop + 26, yBot - yTop - 52, "--s3", 26,
+    (pinOne(o) ? `ออปชันกองหนาแน่นที่ strike เดียว — แถบกว้างครึ่งระยะ strike ข้างเคียงทั้งสองฝั่ง · ` : "ออปชันกองหนาแน่นช่วงนี้ ") +
+    "คนดูแลความเสี่ยงต้องซื้อ-ขายสวนทางราคา ราคาจึงมักถูกดึงกลับเข้ามา (ยังไม่มีสถิติของเราเอง)",
+    `${pinName(o)} ${pinText(o)}`, `🧲 ${pinName(o)}`, yBot - 26 - 9);
 
   // รั้ว — ถ้าอยู่ในกรอบวาดเป็นแท่ง ถ้าไกลเกินวาดเป็นลูกศรที่ขอบ
   const labels = [];   // {x, text, anchor}
@@ -408,7 +416,8 @@ function levelTable(d) {
   const o = d.options || {}, P = spotOf(d, CUR), rows = [];
   const add = (name, x, note) => { if (x != null) rows.push([name, x, note]); };
   add("รั้วบน (call หนาสุด)", o.call_wall, o.call_wall_oi != null ? `OI ${fmt(o.call_wall_oi, 1)} ${CUR}` : "");
-  if (o.pin_zone) { add("โซนแม่เหล็ก — ขอบบน", o.pin_zone[1], ""); add("โซนแม่เหล็ก — ขอบล่าง", o.pin_zone[0], ""); }
+  if (pinOne(o)) add("จุดแม่เหล็ก", o.pin_zone[0], pinHalf(o) > 0 ? `ห่างไม่เกิน ±${fv(pinHalf(o))} นับว่าอยู่ในโซน` : "");
+  else if (o.pin_zone) { add("โซนแม่เหล็ก — ขอบบน", o.pin_zone[1], ""); add("โซนแม่เหล็ก — ขอบล่าง", o.pin_zone[0], ""); }
   add("max pain", o.max_pain, "");
   if (o.sd1_range) { add("ช่วงที่ตลาดคาด — ขอบบน", o.sd1_range[1], ""); add("ช่วงที่ตลาดคาด — ขอบล่าง", o.sd1_range[0], ""); }
   add("รั้วล่าง (put หนาสุด)", o.put_wall, o.put_wall_oi != null ? `OI ${fmt(o.put_wall_oi, 1)} ${CUR}` : "");
@@ -479,7 +488,7 @@ function trendPoints() {
   return (HIST || []).filter(h => h && h.symbols && h.symbols[CUR])
     .map(h => ({t: new Date(h.generated_at_utc).getTime(), p: h.symbols[CUR].spot,
                 mp: h.symbols[CUR].options && h.symbols[CUR].options.max_pain,
-                pz: h.symbols[CUR].options && h.symbols[CUR].options.pin_zone}))
+                pz: h.symbols[CUR].options && (h.symbols[CUR].options.pin_band || h.symbols[CUR].options.pin_zone)}))
     .filter(x => now - x.t <= 26 * 36e5 && x.t <= now + 60e3)
     .sort((a, b) => a.t - b.t);
 }
