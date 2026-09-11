@@ -73,6 +73,11 @@ footer a{color:var(--accent)}
   background:var(--card);border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600}
 .guide-link span{color:var(--accent)}
 .guide-link:hover{border-color:var(--accent)}
+.live{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;color:var(--mute)}
+.live::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--gray)}
+.live.on::before{background:var(--green);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.live.on::before{animation:none}}
 /* ⓪ bias + แผนที่ราคา */
 .bias{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--gray);border-radius:14px;padding:14px 16px}
 .bias.b-up{border-left-color:var(--green)} .bias.b-dn{border-left-color:var(--red)}
@@ -122,6 +127,7 @@ footer a{color:var(--accent)}
     <div class="stamp" id="stamp">กำลังโหลด…</div>
   </header>
   <a class="guide-link" href="guide.html">📖 มือใหม่? อ่านแบบเข้าใจง่าย <span>→</span></a>
+  <div class="live" id="live"></div>
   <div id="stale" class="stale" hidden></div>
   <div class="tabs" role="tablist" id="tabs"></div>
   <main id="main"></main>
@@ -204,10 +210,10 @@ function render() {
   if (!syms.includes(CUR)) CUR = syms[0];
   $("#tabs").innerHTML = syms.map(s => {
     const d = DATA.symbols[s];
-    const ch = d.change_24h;
+    const ch = liveChg(s) ?? d.change_24h;
     return `<button class="tab" role="tab" aria-selected="${s === CUR}" data-s="${s}">
-      ${s} ${fmt(d.spot, s === "BTC" ? 0 : 1)}
-      <small>${d.mode.icon} ${esc(d.mode.mode)} · <span class="${ch >= 0 ? "up" : "dn"}">${ch >= 0 ? "+" : ""}${fmt(ch, 2)}% 24ชม.</span></small>
+      ${s} <span data-px="${s}">${fmt(spotOf(d, s), s === "BTC" ? 0 : 1)}</span>
+      <small>${d.mode.icon} ${esc(d.mode.mode)} · <span data-chg="${s}" class="${ch >= 0 ? "up" : "dn"}">${ch >= 0 ? "+" : ""}${fmt(ch, 2)}% 24ชม.</span></small>
     </button>`;
   }).join("");
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
@@ -226,8 +232,8 @@ function render() {
       <div class="pricebox">
         <label for="px">ราคาที่อยากดู (แก้ได้ — ระดับทั้งหมดจะเทียบกับราคานี้)</label>
         <div class="pxrow">
-          <input id="px" inputmode="decimal" autocomplete="off" value="${PX[CUR] ?? d.spot.toFixed(dp)}">
-          <button id="pxReset" type="button">คืนค่า ${fmt(d.spot, dp)}</button>
+          <input id="px" inputmode="decimal" autocomplete="off" value="${PX[CUR] ?? spotOf(d, CUR).toFixed(dp)}">
+          <button id="pxReset" type="button">↺ ใช้ราคาสด</button>
         </div>
       </div>
       <div id="map"></div>
@@ -275,8 +281,9 @@ function render() {
     const v = parseFloat(px.value.replace(/[^\d.]/g, ""));
     if (isFinite(v) && v > 0) { PX[CUR] = v; renderMap(); }
   };
-  $("#pxReset").onclick = () => { delete PX[CUR]; px.value = d.spot.toFixed(dp); renderMap(); };
+  $("#pxReset").onclick = () => { delete PX[CUR]; px.value = spotOf(d, CUR).toFixed(dp); renderMap(); };
   renderMap();
+  liveBadge();
 }
 
 // ---------- ⓪ bias ----------
@@ -385,7 +392,7 @@ function where(d, P) {
 
 function renderMap() {
   const d = DATA.symbols[CUR], dp = CUR === "BTC" ? 0 : 1, v = d.vol || {};
-  const P = PX[CUR] ?? d.spot;
+  const P = PX[CUR] ?? spotOf(d, CUR);
   const L = levels(d);
   if (!L.length) { $("#map").innerHTML = `<div class="sum">ข้อมูลชุดนี้ยังไม่มีระดับราคาให้วาด</div>`; return; }
   const pct = x => { const g = (x - P) / P * 100; return `<span class="${g >= 0 ? "up" : "dn"}">${g >= 0 ? "+" : ""}${fmt(g, 1)}%</span>`; };
@@ -472,8 +479,63 @@ function summary(d) {
   </div>`;
 }
 
+// ---------- ราคาสด — Binance (เปิด CORS · ไม่โดนบล็อกในไทย) ทุก 3 วิ เฉพาะตอนเปิดหน้าอยู่ ----------
+// ระดับออปชัน / bias / โหมด ยังมาจากรอบคำนวณทุก 2 ชม. — ราคาสดใช้บอกแค่ "ตอนนี้อยู่ตรงไหนของแผนที่"
+const LIVE = {px: {}, chg: {}, at: 0};
+const LIVE_URL = "https://data-api.binance.vision/api/v3/ticker/24hr?type=MINI&symbols=" + encodeURIComponent('["BTCUSDT","ETHUSDT"]');
+let LIVE_T = null;
+function liveOk() { return Date.now() - LIVE.at < 30000; }
+function spotOf(d, s) { return (liveOk() && LIVE.px[s]) || d.spot; }
+function liveChg(s) { return liveOk() && LIVE.chg[s] != null ? LIVE.chg[s] : null; }
+async function pollLive() {
+  try {
+    const r = await fetch(LIVE_URL, {cache: "no-store"});
+    if (r.ok) {
+      (await r.json()).forEach(t => {
+        const s = t.symbol.replace(/USDT$/, ""), last = +t.lastPrice, open = +t.openPrice;
+        if (last > 0) { LIVE.px[s] = last; LIVE.chg[s] = open > 0 ? (last - open) / open * 100 : null; }
+      });
+      LIVE.at = Date.now();
+    }
+  } catch (e) { /* ดึงไม่ได้ → ใช้ราคา ณ รอบคำนวณแทน */ }
+  if (DATA_LOADED_ONCE) onLive();
+}
+function startLive() { if (!LIVE_T) { pollLive(); LIVE_T = setInterval(pollLive, 3000); } }
+function stopLive() { clearInterval(LIVE_T); LIVE_T = null; }
+document.addEventListener("visibilitychange", () => document.hidden ? stopLive() : startLive());
+
+function liveBadge() {
+  const el = $("#live");
+  if (!el || !DATA) return;
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(DATA.generated_at_utc)) / 60000));
+  el.className = "live " + (liveOk() ? "on" : "off");
+  el.textContent = liveOk()
+    ? `ราคาสดจาก Binance ทุก 3 วินาที · ระดับออปชัน / bias / โหมด คำนวณเมื่อ ${ageMin} นาทีก่อน`
+    : `ราคาสดใช้ไม่ได้ตอนนี้ — แสดงราคา ณ รอบคำนวณ (${ageMin} นาทีก่อน)`;
+}
+function onLive() {
+  document.querySelectorAll("[data-px]").forEach(el => {
+    const s = el.dataset.px, d = DATA.symbols[s];
+    if (d) el.textContent = fmt(spotOf(d, s), s === "BTC" ? 0 : 1);
+  });
+  document.querySelectorAll("[data-chg]").forEach(el => {
+    const s = el.dataset.chg, d = DATA.symbols[s];
+    if (!d) return;
+    const ch = liveChg(s) ?? d.change_24h;
+    el.className = ch >= 0 ? "up" : "dn";
+    el.textContent = (ch >= 0 ? "+" : "") + fmt(ch, 2) + "% 24ชม.";
+  });
+  liveBadge();
+  // ผู้ใช้กรอกราคาเอง หรือกำลังพิมพ์อยู่ → ไม่ขยับแผนที่ทับ
+  const px = $("#px");
+  if (!px || PX[CUR] != null || document.activeElement === px) return;
+  px.value = spotOf(DATA.symbols[CUR], CUR).toFixed(CUR === "BTC" ? 0 : 1);
+  renderMap();
+}
+
 load();
 setInterval(load, 10 * 60 * 1000);
+startLive();
 </script>
 </body>
 </html>

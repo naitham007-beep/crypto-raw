@@ -116,6 +116,11 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 footer{margin-top:24px;font-size:12.5px;color:var(--ink2)}
 footer a,.link{color:var(--s1)}
 .err{background:color-mix(in oklab,var(--crit) 14%,var(--surface));padding:14px;border-radius:12px}
+.live{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12.5px;color:var(--ink2)}
+.live::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.live.on::before{background:var(--good);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.live.on::before{animation:none}}
 </style>
 </head>
 <body>
@@ -125,6 +130,7 @@ footer a,.link{color:var(--s1)}
     <div class="stamp" id="stamp">กำลังโหลด…</div>
   </header>
   <div id="stale" class="stale" hidden></div>
+  <div class="live" id="live"></div>
   <div class="coins" id="coins"></div>
   <main id="main"></main>
   <footer>
@@ -194,7 +200,7 @@ function render() {
 
   const d = DATA.symbols[CUR];
   $("#main").innerHTML = `
-    ${hero(d)}
+    <div id="hero">${hero(d)}</div>
     <section class="card">
       <h2>🗺️ แผนที่สนาม — ราคาอยู่ตรงไหนเทียบกับแรงในตลาดออปชัน</h2>
       <p class="sub">ซ้าย = ถูกลง · ขวา = แพงขึ้น · แตะที่แต่ละจุดเพื่ออ่านคำอธิบาย</p>
@@ -221,11 +227,12 @@ function render() {
   drawField(d);
   drawTrend();
   bindTips(document);
+  liveBadge();
 }
 
 // ---------- ส่วนหัว: ตัวเลขเดียว + สรุปภาษาคน ----------
 function hero(d) {
-  const o = d.options || {}, P = d.spot, ch = d.change_24h, lines = [];
+  const o = d.options || {}, P = spotOf(d, CUR), ch = liveChg(CUR) ?? d.change_24h, lines = [];
   const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "";
   if (o.pin_zone) {
     const [lo, hi] = o.pin_zone;
@@ -238,7 +245,7 @@ function hero(d) {
   if (p) lines.push([p.dir === "down" ? "🔻" : "🔺", `สถิติ funding: ใน 8 ชม.ข้างหน้าราคามัก<b>${p.dir === "down" ? "อ่อนตัว" : "ขึ้น"}บ่อยกว่าปกติ</b> — ปิดสูงขึ้น ${fmt(p.up8h, 0)} จาก 100 ครั้ง (ปกติ ${fmt(p.base, 0)})`]);
   else if (d.bias) lines.push(["➖", "ตอนนี้<b>ยังไม่มีสัญญาณทิศทางที่มีสถิติรองรับ</b> — หน้านี้จะไม่เดาทิศให้"]);
   return `<section class="card hero">
-    <div class="coin">${CUR} · ราคาล่าสุด</div>
+    <div class="coin">${CUR} · ${liveOk() ? "ราคาสด" : "ราคา ณ รอบคำนวณ"}</div>
     <div class="big">${fmt(P, dp())}</div>
     ${ch != null ? `<div class="chg ${ch >= 0 ? "up" : "dn"}">${ch >= 0 ? "▲ +" : "▼ "}${fmt(ch, 2)}% ใน 24 ชม.</div>` : ""}
     <ul class="story">${lines.map(l => `<li><span>${l[0]}</span><span>${l[1]}</span></li>`).join("")}</ul>
@@ -259,7 +266,7 @@ function niceStep(span, n) {
 function pctFrom(P, x) { const g = (x - P) / P * 100; return (g >= 0 ? "+" : "") + fmt(g, 1) + "%"; }
 
 function drawField(d) {
-  const box = $("#field"), o = d.options || {}, v = d.vol || {}, P = d.spot;
+  const box = $("#field"), o = d.options || {}, v = d.vol || {}, P = spotOf(d, CUR);
   const W = Math.max(300, box.clientWidth), H = 184, ml = 12, mr = 12;
   const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "วันหมดอายุ";
   const sd = o.sd1_move || ((v.atr14_prev || v.atr14 || P * 0.02) / 2);
@@ -332,7 +339,7 @@ function drawField(d) {
   const px = Math.min(Math.max(xp - pw / 2, 0), W - pw);
   parts.push(`<rect class="pill" x="${px}" y="2" width="${pw}" height="22" rx="11"/>`);
   parts.push(`<text class="pill-t" x="${px + pw / 2}" y="17" text-anchor="middle">${esc(pt)}</text>`);
-  parts.push(`<rect class="hit" x="${xp - 12}" y="0" width="24" height="${yBot + 6}" data-tipv="${esc(pt)}" data-tip="ราคาล่าสุด ณ ${esc(thTime(DATA.generated_at_utc))} น." aria-label="${esc(pt)}"/>`);
+  parts.push(`<rect class="hit" x="${xp - 12}" y="0" width="24" height="${yBot + 6}" data-tipv="${esc(pt)}" data-tip="${liveOk() ? "ราคาสดจาก Binance (อัพเดททุก 3 วินาที)" : "ราคา ณ รอบคำนวณ " + esc(thTime(DATA.generated_at_utc)) + " น."}" aria-label="${esc(pt)}"/>`);
 
   // ป้ายใต้แกน — วางแถวละไม่ชนกัน (วัดความกว้างจริงก่อนวาง)
   const rows = [[], []], yRow = [yBot + 46, yBot + 64];
@@ -351,7 +358,7 @@ function drawField(d) {
 }
 
 function levelTable(d) {
-  const o = d.options || {}, P = d.spot, rows = [];
+  const o = d.options || {}, P = spotOf(d, CUR), rows = [];
   const add = (name, x, note) => { if (x != null) rows.push([name, x, note]); };
   add("รั้วบน (call หนาสุด)", o.call_wall, o.call_wall_oi != null ? `OI ${fmt(o.call_wall_oi, 1)} ${CUR}` : "");
   if (o.pin_zone) { add("โซนแม่เหล็ก — ขอบบน", o.pin_zone[1], ""); add("โซนแม่เหล็ก — ขอบล่าง", o.pin_zone[0], ""); }
@@ -546,10 +553,54 @@ function bindTips(root) {
 }
 document.addEventListener("scroll", () => { $("#tip").hidden = true; }, {passive: true});
 
+// ---------- ราคาสด — Binance (เปิด CORS · ไม่โดนบล็อกในไทย) ทุก 3 วิ เฉพาะตอนเปิดหน้าอยู่ ----------
+// ระดับออปชัน / bias ยังมาจากรอบคำนวณทุก 2 ชม. — ราคาสดใช้บอกแค่ "ตอนนี้อยู่ตรงไหนของแผนที่"
+const LIVE = {px: {}, chg: {}, at: 0};
+const LIVE_URL = "https://data-api.binance.vision/api/v3/ticker/24hr?type=MINI&symbols=" + encodeURIComponent('["BTCUSDT","ETHUSDT"]');
+let LIVE_T = null;
+function liveOk() { return Date.now() - LIVE.at < 30000; }
+function spotOf(d, s) { return (liveOk() && LIVE.px[s]) || d.spot; }
+function liveChg(s) { return liveOk() && LIVE.chg[s] != null ? LIVE.chg[s] : null; }
+async function pollLive() {
+  try {
+    const r = await fetch(LIVE_URL, {cache: "no-store"});
+    if (r.ok) {
+      (await r.json()).forEach(t => {
+        const s = t.symbol.replace(/USDT$/, ""), last = +t.lastPrice, open = +t.openPrice;
+        if (last > 0) { LIVE.px[s] = last; LIVE.chg[s] = open > 0 ? (last - open) / open * 100 : null; }
+      });
+      LIVE.at = Date.now();
+    }
+  } catch (e) { /* ดึงไม่ได้ → ใช้ราคา ณ รอบคำนวณแทน */ }
+  onLive();
+}
+function startLive() { if (!LIVE_T) { pollLive(); LIVE_T = setInterval(pollLive, 3000); } }
+function stopLive() { clearInterval(LIVE_T); LIVE_T = null; }
+document.addEventListener("visibilitychange", () => document.hidden ? stopLive() : startLive());
+
+function liveBadge() {
+  const el = $("#live");
+  if (!el || !DATA) return;
+  const ageMin = Math.max(0, Math.round((Date.now() - new Date(DATA.generated_at_utc)) / 60000));
+  el.className = "live " + (liveOk() ? "on" : "off");
+  el.textContent = liveOk()
+    ? `ราคาสดจาก Binance ทุก 3 วินาที · ระดับออปชันและสถิติคำนวณเมื่อ ${ageMin} นาทีก่อน`
+    : `ราคาสดใช้ไม่ได้ตอนนี้ — แสดงราคา ณ รอบคำนวณ (${ageMin} นาทีก่อน)`;
+}
+function onLive() {
+  if (!DATA || !$("#hero")) return;
+  const d = DATA.symbols[CUR];
+  $("#hero").innerHTML = hero(d);
+  // tooltip เปิดค้างอยู่ → ไม่วาดแผนที่ทับ (กันป้ายหายใต้นิ้ว) · รอบถัดไปค่อยวาด
+  if ($("#tip").hidden) { drawField(d); bindTips($("#field")); }
+  liveBadge();
+}
+
 let RZ = null;
 addEventListener("resize", () => { clearTimeout(RZ); RZ = setTimeout(() => { if (DATA) { drawField(DATA.symbols[CUR]); drawTrend(); bindTips($("#field")); } }, 150); });
 load();
 setInterval(load, 10 * 60 * 1000);
+startLive();
 </script>
 </body>
 </html>
