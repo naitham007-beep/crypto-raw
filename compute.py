@@ -26,6 +26,9 @@ from pathlib import Path
 OUT_DIR = Path(os.environ.get("OUT_DIR", "out"))
 REPO = os.environ.get("GITHUB_REPOSITORY", "korntrade/crypto-raw")
 HISTORY_KEEP_DAYS = 120
+# โซนตรึง: ขยายจาก strike ที่ gamma×OI สูงสุดไปทีละ strike ที่ติดกัน ตราบที่ยัง ≥ สัดส่วนนี้ของจุดสูงสุด
+# ต้องตรงกับ PIN_KEEP ใน fallback_cloudflare/worker.js (Worker คำนวณชุดเดียวกันทุก 15 นาที)
+PIN_KEEP = 0.5
 UA = "crypto-raw-compute/1.0"
 
 # ผล backtest ที่รันไว้ (analysis/backtest_funding.ps1) — ใช้ตัดสินว่าข้อไหน "พิสูจน์แล้ว"
@@ -209,10 +212,19 @@ def option_metrics(oi_raw, sum_raw, spot, now):
             g = gamma_by.get((k, t))
             if g:
                 gex[k] = gex.get(k, 0.0) + abs(g) * v
+    # เดิม = min–max ของ 3 strike อันดับแรก → 11 ก.ย. 2026 เจออันดับ 3 เป็น 88,000 (+14% จากราคา)
+    # โซนกว้าง 12,000 จุดใช้ไม่ได้ และอันดับ 3 สลับได้ในไม่กี่นาที
+    # ใหม่ = เริ่มที่จุดสูงสุด ขยายไปทีละ strike ที่ติดกัน (strike ไม่มี gex = 0 → กระโดดข้ามช่องว่างไม่ได้)
     pin_zone = None
     if gex:
-        top = sorted(gex, key=gex.get, reverse=True)[:3]
-        pin_zone = [min(top), max(top)]
+        peak = max(gex, key=gex.get)
+        thr = gex[peak] * PIN_KEEP
+        lo = hi = strikes.index(peak)
+        while lo - 1 >= 0 and gex.get(strikes[lo - 1], 0.0) >= thr:
+            lo -= 1
+        while hi + 1 < len(strikes) and gex.get(strikes[hi + 1], 0.0) >= thr:
+            hi += 1
+        pin_zone = [strikes[lo], strikes[hi]]
 
     # IV ที่ราคาปัจจุบัน (ATM) + กรอบ 1SD ถึงวันหมดอายุ
     atm_iv, rr25 = None, None
