@@ -172,7 +172,9 @@ async function mergeWorkerLevels(D) {
       const f = lv.symbols && lv.symbols[s], at = f ? Date.parse(f.at) : 0;
       if (!f || !f.options || !(at > ghAt) || Date.now() - at > 2 * 36e5) continue;
       const {sd1_move, sd1_range, ...rest} = f.options;
-      D.symbols[s].options = {...(D.symbols[s].options || {}), ...rest};
+      const base = D.symbols[s].options || {};
+      // ชุดสัญญาต่างกัน (ช่วง 3 ชม.ก่อนหมดอายุ) → กรอบ 1SD ของชุดเก่าผูกกับวันหมดอายุคนละวัน ซ่อนไว้จนรอบ 2 ชม.ถัดไป
+      D.symbols[s].options = {...base, ...rest, ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null})};
       newest = Math.max(newest, at);
     }
     if (newest) D.__levelsAt = new Date(newest).toISOString();
@@ -536,10 +538,12 @@ document.addEventListener("visibilitychange", () => document.hidden ? stopLive()
 function liveBadge() {
   const el = $("#live");
   if (!el || !DATA) return;
+  // ระดับออปชันอาจมาจาก Worker (15 นาที) แต่ bias/โหมดมาจาก compute.py (2 ชม.) → แยกเวลาให้เห็นทั้งคู่ ไม่พูดรวบว่าสดเท่ากัน
   const ageMin = Math.max(0, Math.round((Date.now() - new Date(DATA.__levelsAt || DATA.generated_at_utc)) / 60000));
+  const statMin = Math.max(0, Math.round((Date.now() - new Date(DATA.generated_at_utc)) / 60000));
   el.className = "live " + (liveOk() ? "on" : "off");
   el.textContent = liveOk()
-    ? `ราคาสดจาก Binance · อัพเดทล่าสุด ${new Date(LIVE.at).toLocaleTimeString("th-TH", {timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit"})} (ทุก 3 วินาที) · ระดับออปชัน / bias / โหมด คำนวณเมื่อ ${ageMin} นาทีก่อน`
+    ? `ราคาสดจาก Binance · อัพเดทล่าสุด ${new Date(LIVE.at).toLocaleTimeString("th-TH", {timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit"})} (ทุก 3 วินาที) · ระดับออปชัน ${ageMin} นาทีก่อน · bias / โหมด ${statMin} นาทีก่อน`
     : `ราคาสดใช้ไม่ได้ตอนนี้ — แสดงราคา ณ รอบคำนวณ (${ageMin} นาทีก่อน)`;
 }
 function onLive() {
