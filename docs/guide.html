@@ -162,6 +162,14 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const fmt = (v, d = 0) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("th-TH", {maximumFractionDigits: d, minimumFractionDigits: d});
 const thTime = (iso, withDay = true) => new Date(iso).toLocaleString("th-TH", Object.assign({timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit"}, withDay ? {day: "numeric", month: "short"} : {}));
 let DATA = null, HIST = [], CUR = "BTC";
+// เวลารอบคำนวณถัดไป (รอบเก็บข้อมูลทุก 2 ชม.) — ใช้บอกผู้ใช้ว่าค่าที่ยังไม่มาจะมาเมื่อไหร่
+function nextRoundTxt() {
+  const t = DATA && Date.parse(DATA.generated_at_utc);
+  if (!t) return "";
+  let next = t + 2 * 36e5;
+  while (next < Date.now()) next += 2 * 36e5;      // รอบเลยกำหนด (ตัวเก็บสะดุด) → ขยับไปรอบถัดไปที่ยังมาไม่ถึง
+  return ` (ราว ${thTime(new Date(next).toISOString(), false)} น.)`;
+}
 const LASTP = {};   // ราคาที่แสดงรอบก่อน แยกรายเหรียญ — ใช้ตัดสินว่าจะกะพริบเขียว/แดง
 const thSec = t => new Date(t).toLocaleTimeString("th-TH", {timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit"});
 // ราคาใหญ่: ทศนิยม 2 ตำแหน่งแบบกระดานเทรด (ตลาดเงียบขยับทีละเซนต์ — จำนวนเต็มจะดูเหมือนค้าง · MD ทัก 11 ก.ย.)
@@ -204,7 +212,9 @@ async function mergeWorkerLevels(D) {
       const {sd1_move, sd1_range, ...rest} = f.options;
       const base = D.symbols[s].options || {};
       // ชุดสัญญาต่างกัน (ช่วง 3 ชม.ก่อนหมดอายุ) → กรอบ 1SD ของชุดเก่าผูกกับวันหมดอายุคนละวัน ซ่อนไว้จนรอบ 2 ชม.ถัดไป
-      D.symbols[s].options = {...base, ...rest, pin_band: rest.pin_band ?? null, ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null})};
+      // sd1_pending = ซ่อนเพราะเปลี่ยนชุดสัญญา (ไม่ใช่ข้อมูลหาย) → หน้าเว็บเอาไปบอกผู้ใช้ แทนที่จะหายเงียบจนคนงง
+      D.symbols[s].options = {...base, ...rest, pin_band: rest.pin_band ?? null,
+        ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null, sd1_pending: true})};
       newest = Math.max(newest, at);
     }
     if (newest) D.__levelsAt = new Date(newest).toISOString();
@@ -246,7 +256,9 @@ function render() {
       <p class="sub">ซ้าย = ถูกลง · ขวา = แพงขึ้น · แตะที่แต่ละจุดเพื่ออ่านคำอธิบาย</p>
       <div id="field"></div>
       <div class="legend">
-        <span><i class="sw" style="background:color-mix(in oklab,var(--s1) 22%,transparent);box-shadow:inset 0 2px 0 var(--s1)"></i>ช่วงที่ตลาดคาด (1SD)</span>
+        ${d.options && d.options.sd1_range
+          ? `<span><i class="sw" style="background:color-mix(in oklab,var(--s1) 22%,transparent);box-shadow:inset 0 2px 0 var(--s1)"></i>ช่วงที่ตลาดคาด (1SD)</span>`
+          : `<span class="muted">📏 ช่วงที่ตลาดคาด — ยังไม่มีในรอบนี้${d.options && d.options.sd1_pending ? " (เปลี่ยนชุดสัญญา)" : ""}</span>`}
         <span><i class="sw" style="background:color-mix(in oklab,var(--s3) 30%,transparent);box-shadow:inset 0 2px 0 var(--s3)"></i>โซนแม่เหล็ก</span>
         <span><i class="sw dia" style="background:var(--s2)"></i>max pain</span>
         <span><i class="sw bar" style="background:var(--wall)"></i>รั้ว (กำแพงออปชัน)</span>
@@ -292,6 +304,7 @@ function hero(d) {
       : ["🧲", `ราคาอยู่<b>${P < lo ? "ต่ำกว่า" : "สูงกว่า"}${nm}</b> (${pinText(o)}) — แรงดึงอ่อนลง ราคาวิ่งได้อิสระกว่า`]);
   }
   if (o.sd1_range) lines.push(["📏", `ตลาดออปชันคาดว่าถึง ${exp} ราคาน่าจะอยู่ในช่วง <b>${fv(o.sd1_range[0])}–${fv(o.sd1_range[1])}</b> (ตามทฤษฎีราว 2 ใน 3 ของโอกาส)`]);
+  else if (o.sd1_pending) lines.push(["📏", `<b>กรอบที่ตลาดคาดยังไม่มา</b> — สัญญาชุดเดิมใกล้หมดอายุ ตลาดเพิ่งย้ายไปชุดใหม่ (หมด ${exp}) · กรอบจะกลับมาเองรอบคำนวณถัดไป${nextRoundTxt()} · <span class="muted">ระดับอื่นบนหน้านี้เป็นของชุดใหม่แล้ว</span>`]);
   const p = d.bias && d.bias.proven;
   if (p) lines.push([p.dir === "down" ? "🔻" : "🔺", `สถิติ funding: ใน 8 ชม.ข้างหน้าราคามัก<b>${p.dir === "down" ? "อ่อนตัว" : "ขึ้น"}บ่อยกว่าปกติ</b> — ปิดสูงขึ้น ${fmt(p.up8h, 0)} จาก 100 ครั้ง (ปกติ ${fmt(p.base, 0)})`]);
   else if (d.bias) lines.push(["➖", "ตอนนี้<b>ยังไม่มีสัญญาณทิศทางที่มีสถิติรองรับ</b> — หน้านี้จะไม่เดาทิศให้"]);

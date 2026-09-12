@@ -174,7 +174,9 @@ async function mergeWorkerLevels(D) {
       const {sd1_move, sd1_range, ...rest} = f.options;
       const base = D.symbols[s].options || {};
       // ชุดสัญญาต่างกัน (ช่วง 3 ชม.ก่อนหมดอายุ) → กรอบ 1SD ของชุดเก่าผูกกับวันหมดอายุคนละวัน ซ่อนไว้จนรอบ 2 ชม.ถัดไป
-      D.symbols[s].options = {...base, ...rest, pin_band: rest.pin_band ?? null, ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null})};
+      // sd1_pending = ซ่อนเพราะเปลี่ยนชุดสัญญา (ไม่ใช่ข้อมูลหาย) → หน้าเว็บเอาไปบอกผู้ใช้ แทนที่จะหายเงียบจนคนงง
+      D.symbols[s].options = {...base, ...rest, pin_band: rest.pin_band ?? null,
+        ...(base.expiry === rest.expiry ? {} : {sd1_range: null, sd1_move: null, sd1_pending: true})};
       newest = Math.max(newest, at);
     }
     if (newest) D.__levelsAt = new Date(newest).toISOString();
@@ -210,6 +212,16 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmt = (v, d = 0) => v == null || isNaN(v) ? "—" : Number(v).toLocaleString("th-TH", {maximumFractionDigits: d, minimumFractionDigits: d});
 const thTime = iso => new Date(iso).toLocaleString("th-TH", {timeZone: "Asia/Bangkok", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+
+// เวลารอบคำนวณถัดไป (รอบเก็บข้อมูลทุก 2 ชม.) — ใช้บอกผู้ใช้ว่าค่าที่ยังไม่มาจะมาเมื่อไหร่
+function nextRoundTxt() {
+  const t = DATA && Date.parse(DATA.generated_at_utc);
+  if (!t) return "";
+  let next = t + 2 * 36e5;
+  while (next < Date.now()) next += 2 * 36e5;      // รอบเลยกำหนด (ตัวเก็บสะดุด) → ขยับไปรอบถัดไปที่ยังมาไม่ถึง
+  const s = new Date(next).toLocaleTimeString("th-TH", {timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit"});
+  return ` (ราว ${s} น.)`;
+}
 
 let DATA = null, CUR = "BTC", DATA_LOADED_ONCE = false;
 const PX = {};   // ราคาที่ผู้ใช้กรอกเอง แยกรายเหรียญ (ไม่มี = ใช้ราคาล่าสุด)
@@ -431,6 +443,8 @@ function where(d, P) {
 
 function renderMap() {
   const d = DATA.symbols[CUR], dp = CUR === "BTC" ? 0 : 1, v = d.vol || {};
+  const o = d.options || {};
+  const exp = o.expiry_utc ? thTime(o.expiry_utc) + " น." : "หมดอายุ";
   const P = PX[CUR] ?? spotOf(d, CUR);
   const L = levels(d);
   if (!L.length) { $("#map").innerHTML = `<div class="sum">ข้อมูลชุดนี้ยังไม่มีระดับราคาให้วาด</div>`; return; }
@@ -469,6 +483,8 @@ function renderMap() {
     <div class="lv now"><b>${fmt(P, dp)}</b><div class="lt">⬅ ราคาที่ดู</div><span></span></div>
     ${below.map(row).join("")}
   </div>
+  ${o.sd1_pending ? `<div class="note" style="color:var(--amber)">📏 <b>ยังไม่มีกรอบ 1SD ในรอบนี้</b> — สัญญาชุดเดิมใกล้หมดอายุ ตลาดเพิ่งย้ายไปชุดใหม่ (หมด ${exp})
+    กรอบจะกลับมาเองรอบคำนวณถัดไป${nextRoundTxt()} · ระดับอื่นด้านบนเป็นของชุดใหม่แล้ว</div>` : ""}
   <div class="note">ระดับจากออปชัน (กำแพง · max pain · โซนตรึง · 1SD) ใช้ได้ถึงวันหมดอายุชุดนี้ และยังไม่มีสถิติของเราเองว่าราคาเคารพจริงกี่ % ·
     ATR และ EMA คำนวณจากราคาจริง เป็นข้อเท็จจริง ไม่ใช่คำทำนาย</div>`;
 
